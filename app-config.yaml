@@ -79,9 +79,12 @@ techdocs:
 
 auth:
   # see https://backstage.io/docs/auth/ to learn about auth providers
-  providers:
-    # See https://backstage.io/docs/auth/guest/provider
-    guest: {}
+  #
+  # No auth provider is defined in this base file ON PURPOSE: Backstage deep-merges config
+  # layers, and the deployed image loads app-config.yaml + app-config.production.yaml. Keeping
+  # `guest` out of the base guarantees it can never leak into production (production uses `oidc`).
+  # Local development gets `guest` from the gitignored app-config.local.yaml.
+  providers: {}
   # see https://backstage.io/docs/ai/mcp-actions#client-id-metadata-documents
   # to learn more about client id metadata documents
   experimentalClientIdMetadataDocuments:

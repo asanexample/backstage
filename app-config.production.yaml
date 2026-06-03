@@ -32,8 +32,29 @@ backend:
       #     $file: <file-path>/ca/server.crt
 
 auth:
+  # Production sign-in is OIDC against the platform Dex broker (Identity Center → Dex → Backstage).
+  # `environment: production` selects the `production` key under each provider below and is the
+  # environment the frontend OAuth2 API requests (see packages/app/src/modules/auth). Guest is
+  # deliberately absent here and from the base config — see app-config.yaml.
+  environment: production
   providers:
-    guest: {}
+    oidc:
+      production:
+        # Dex's OIDC discovery document. Dex is the centralized SAML→OIDC broker; see
+        # docs/runbooks/dex-sso.md and infra/modules/dex in the platform repo.
+        metadataUrl: https://sso.aws.refplat.org/.well-known/openid-configuration
+        clientId: backstage
+        # Injected by the deployment from the platform/backstage/oidc Secrets Manager secret
+        # (ExternalSecret → K8s Secret → OIDC_CLIENT_SECRET env). Shared with Dex's staticClient.
+        clientSecret: ${OIDC_CLIENT_SECRET}
+        prompt: auto
+        # Phase 2.1 is login-only: issue a Backstage identity straight from the email claim
+        # without requiring a matching catalog User entity (no catalog Users/Groups until 2.3).
+        # Group-based admin RBAC is a deferred follow-up (needs the permission framework).
+        signIn:
+          resolvers:
+            - resolver: emailLocalPartMatchingUserEntityName
+              dangerouslyAllowSignInWithoutUserInCatalog: true
 
 catalog:
   # Overrides the default list locations from app-config.yaml as these contain example data.

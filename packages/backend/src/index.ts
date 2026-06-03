@@ -26,8 +26,12 @@ backend.add(import('@backstage/plugin-techdocs-backend'));
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
 // See https://backstage.io/docs/backend-system/building-backends/migrating#the-auth-plugin
+// guest provider — local development only (configured in app-config.local.yaml, never in production).
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // See https://backstage.io/docs/auth/guest/provider
+// OIDC provider — production SSO via the platform Dex broker (sso.aws.refplat.org).
+// Configured in app-config.production.yaml (auth.providers.oidc). See docs/runbooks/dex-sso.md.
+backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
 
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend'));
