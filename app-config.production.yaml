@@ -6,7 +6,10 @@ backend:
   # The browser-facing URL of the backend. Served behind the Cilium Gateway / internal NLB at this host
   # (Tailscale-only; see the platform gateway-config). TLS is terminated at the gateway, not here.
   baseUrl: https://backstage.aws.refplat.org
-  listen: ':7007'
+  # Bind all interfaces on 7007 (object form — Backstage 1.51's backend rejects the ':7007' string form).
+  listen:
+    host: 0.0.0.0
+    port: 7007
   # The frontend and backend share this origin, so CORS only needs the public URL.
   cors:
     origin: https://backstage.aws.refplat.org
