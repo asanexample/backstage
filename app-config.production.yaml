@@ -1,17 +1,17 @@
 app:
-  # Should be the same as backend.baseUrl when using the `app-backend` plugin.
-  baseUrl: http://localhost:7007
+  # Same as backend.baseUrl — the app-backend plugin serves the frontend from the backend (one origin).
+  baseUrl: https://backstage.aws.refplat.org
 
 backend:
-  # Note that the baseUrl should be the URL that the browser and other clients
-  # should use when communicating with the backend, i.e. it needs to be
-  # reachable not just from within the backend host, but from all of your
-  # callers. When its value is "http://localhost:7007", it's strictly private
-  # and can't be reached by others.
-  baseUrl: http://localhost:7007
-  # The listener can also be expressed as a single <host>:<port> string. In this case we bind to
-  # all interfaces, the most permissive setting. The right value depends on your specific deployment.
+  # The browser-facing URL of the backend. Served behind the Cilium Gateway / internal NLB at this host
+  # (Tailscale-only; see the platform gateway-config). TLS is terminated at the gateway, not here.
+  baseUrl: https://backstage.aws.refplat.org
   listen: ':7007'
+  # The frontend and backend share this origin, so CORS only needs the public URL.
+  cors:
+    origin: https://backstage.aws.refplat.org
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
 
   # config options: https://node-postgres.com/apis/client
   database:
