@@ -65,24 +65,32 @@ integrations:
       apps:
         - appId: ${GITHUB_APP_ID}
           privateKey: ${GITHUB_APP_PRIVATE_KEY}
+          # Backstage's integration schema requires clientId+clientSecret, but installation-token catalog
+          # discovery never uses them (they're OAuth/sign-in creds). This App is discovery-only — placeholders
+          # rather than minting a real, unused OAuth client secret.
+          clientId: discovery-only-unused
+          clientSecret: discovery-only-unused
 
 catalog:
   # Replaces the scaffold's example locations (demo data). The example `guest` User is gone too — the OIDC
   # sign-in resolver needs no catalog User (dangerouslyAllowSignInWithoutUserInCatalog).
   #
-  # Anti-spoofing: discovered app-repo catalog-info.yaml may only register Components (+ Location). App repos
-  # are untrusted self-assertions, so they can't inject a Group/System/User or forge ownership. The seed Groups
-  # below come from a trusted in-image file that explicitly allows Group. Authoritative ownership is the 2.3
-  # git-projection.
+  # Anti-spoofing, scoped by location TYPE (rules are OR across matching rules; a per-location exact-target
+  # matcher doesn't match the resolved path, so we key on type instead):
+  #   - trusted in-image `file` locations (the seed Groups below) may register org entities;
+  #   - everything else (github `url` discovery = untrusted app self-assertion) is Components-only, so app
+  #     repos can't inject a Group/System/User or forge ownership.
+  # Authoritative ownership is the 2.3 git-projection.
   rules:
+    - allow: [Group, User, Location]
+      locations:
+        - type: file
     - allow: [Component, Location]
   locations:
     # Seed Group entities (alpha/bravo/platform) so Components resolve to a real owner. Baked into the image
     # (Dockerfile COPY catalog). Superseded by the 2.3 projection (Identity Center groups + ADR-049 envelope).
     - type: file
       target: ./catalog/org.yaml
-      rules:
-        - allow: [Group]
   providers:
     github:
       asanexample:
