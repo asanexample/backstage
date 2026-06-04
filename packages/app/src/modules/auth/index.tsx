@@ -61,7 +61,12 @@ const oidcAuthApi = ApiBlueprint.make({
             icon: () => null,
           },
           environment: configApi.getOptionalString('auth.environment'),
-          defaultScopes: ['openid', 'profile', 'email'],
+          // `offline_access` is required for session persistence: it makes Dex issue a refresh token,
+          // which the auth backend stores in an httpOnly cookie. On page reload the in-memory session is
+          // gone, so the app silently refreshes via that cookie — without it, every refresh bounces the
+          // user back to the sign-in page. (Dex's SAML connector can't refresh upstream, but Dex reuses
+          // the stored identity claims on refresh, so the Backstage session restores cleanly.)
+          defaultScopes: ['openid', 'profile', 'email', 'offline_access'],
         }),
     }),
 });
