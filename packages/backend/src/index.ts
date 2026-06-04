@@ -75,6 +75,11 @@ backend.add(import('@backstage/plugin-search-backend-module-techdocs'));
 // kubernetes plugin
 backend.add(import('@backstage/plugin-kubernetes-backend'));
 
+// argocd plugin (Phase 2.4b) — proxies our self-hosted ArgoCD read-only (token auth) so Component entities
+// show live sync/health + deployment history. Config (instances/token) in app-config, injected by the platform
+// backstage module (auth.providers stay untouched). See docs/runbooks/backstage-argocd.md.
+backend.add(import('@roadiehq/backstage-plugin-argo-cd-backend'));
+
 // notifications and signals plugins
 backend.add(import('@backstage/plugin-notifications-backend'));
 backend.add(import('@backstage/plugin-signals-backend'));
