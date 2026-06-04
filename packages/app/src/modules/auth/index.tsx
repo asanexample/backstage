@@ -61,23 +61,32 @@ const oidcAuthApi = ApiBlueprint.make({
             icon: () => null,
           },
           environment: configApi.getOptionalString('auth.environment'),
-          // `offline_access` is required for session persistence: it makes Dex issue a refresh token,
-          // which the auth backend stores in an httpOnly cookie. On page reload the in-memory session is
-          // gone, so the app silently refreshes via that cookie — without it, every refresh bounces the
-          // user back to the sign-in page. (Dex's SAML connector can't refresh upstream, but Dex reuses
-          // the stored identity claims on refresh, so the Backstage session restores cleanly.)
-          defaultScopes: ['openid', 'profile', 'email', 'offline_access'],
+          // NB: there is deliberately no `offline_access` here. Our upstream IdP is AWS Identity Center
+          // via Dex's SAML connector, and the SAML 2.0 protocol has no non-interactive re-query — so Dex
+          // *ignores* offline_access and never issues a refresh token (https://dexidp.io/docs/connectors/saml/).
+          // That means Backstage's silent /refresh can never succeed, so we cannot persist the in-memory
+          // session across reloads. Instead the SignInPage below uses `auto` to transparently re-auth on
+          // load via the live Identity Center session (no click). See docs/runbooks/dex-sso.md.
+          defaultScopes: ['openid', 'profile', 'email'],
         }),
     }),
 });
 
 // Replace the default sign-in page (which only offers `guest`) with the OIDC provider.
+//
+// `auto` makes the page initiate sign-in immediately instead of rendering a "Sign In" button. Because the
+// Backstage session is in-memory and we get no refresh token from SAML/Dex (see the OAuth2 note above), the
+// session is lost on every reload; `auto` transparently re-acquires it through the still-live Identity Center
+// session (the popup completes without user interaction), so the user isn't bounced to a sign-in screen on
+// each refresh. This uses the popup flow (the experimental redirect flow would loop: it depends on the same
+// /refresh that SAML can't satisfy).
 const signInPage = SignInPageBlueprint.make({
   params: {
     loader: async () => props =>
       (
         <SignInPage
           {...props}
+          auto
           provider={{
             id: 'oidc',
             title: 'AWS SSO',
