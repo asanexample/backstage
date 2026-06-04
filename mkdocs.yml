@@ -1,0 +1,8 @@
+site_name: 'Backstage Developer Portal'
+site_description: 'The platform developer portal — catalog, SSO, and the tenant model projection.'
+
+nav:
+  - Home: index.md
+
+plugins:
+  - techdocs-core
