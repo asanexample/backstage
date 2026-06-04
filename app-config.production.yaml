@@ -47,6 +47,13 @@ auth:
         # Injected by the deployment from the platform/backstage/oidc Secrets Manager secret
         # (ExternalSecret → K8s Secret → OIDC_CLIENT_SECRET env). Shared with Dex's staticClient.
         clientSecret: ${OIDC_CLIENT_SECRET}
+        # Required for session persistence across page reloads. The oidc provider builds the UPSTREAM
+        # authorize scope from a fixed `required` set (openid/profile/email) + `additionalScopes` — it does
+        # NOT forward arbitrary frontend-requested scopes. So requesting offline_access on the frontend alone
+        # never reaches Dex; without it Dex issues no refresh token, the backend sets no refresh cookie, and
+        # every reload's silent /refresh returns 401 → the user is bounced to sign-in. (Dex reuses the stored
+        # SAML identity on refresh; no re-hit to Identity Center.)
+        additionalScopes: offline_access
         prompt: auto
         # Phase 2.1 is login-only: issue a Backstage identity straight from the email claim
         # without requiring a matching catalog User entity (no catalog Users/Groups until 2.3).
