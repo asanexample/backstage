@@ -56,24 +56,42 @@ auth:
             - resolver: emailLocalPartMatchingUserEntityName
               dangerouslyAllowSignInWithoutUserInCatalog: true
 
+integrations:
+  github:
+    # Read-only GitHub App for catalog discovery (asanexample org, app-alpha/app-bravo/backstage).
+    # Replaces the base config's ${GITHUB_TOKEN} (arrays replace on config merge). appId + private key
+    # come from platform/backstage/github-app via ExternalSecret -> env. See docs/runbooks/backstage-github-app.md.
+    - host: github.com
+      apps:
+        - appId: ${GITHUB_APP_ID}
+          privateKey: ${GITHUB_APP_PRIVATE_KEY}
+
 catalog:
-  # Overrides the default list locations from app-config.yaml as these contain example data.
-  # See https://backstage.io/docs/features/software-catalog/#adding-components-to-the-catalog for more details
-  # on how to get entities into the catalog.
+  # Replaces the scaffold's example locations (demo data). The example `guest` User is gone too — the OIDC
+  # sign-in resolver needs no catalog User (dangerouslyAllowSignInWithoutUserInCatalog).
+  #
+  # Anti-spoofing: discovered app-repo catalog-info.yaml may only register Components (+ Location). App repos
+  # are untrusted self-assertions, so they can't inject a Group/System/User or forge ownership. The seed Groups
+  # below come from a trusted in-image file that explicitly allows Group. Authoritative ownership is the 2.3
+  # git-projection.
+  rules:
+    - allow: [Component, Location]
   locations:
-    # Local example data, replace this with your production config, these are intended for demo use only.
-    # File locations are relative to the backend process, typically in a deployed context, such as in a Docker container, this will be the root
+    # Seed Group entities (alpha/bravo/platform) so Components resolve to a real owner. Baked into the image
+    # (Dockerfile COPY catalog). Superseded by the 2.3 projection (Identity Center groups + ADR-049 envelope).
     - type: file
-      target: ./examples/entities.yaml
-
-    # Local example template
-    - type: file
-      target: ./examples/template/template.yaml
+      target: ./catalog/org.yaml
       rules:
-        - allow: [Template]
-
-    # Local example organizational data
-    - type: file
-      target: ./examples/org.yaml
-      rules:
-        - allow: [User, Group]
+        - allow: [Group]
+  providers:
+    github:
+      asanexample:
+        organization: asanexample
+        catalogPath: /catalog-info.yaml
+        filters:
+          branch: main
+          # Scope discovery to our repos even if the App is later installed more broadly.
+          repository: '^(app-alpha|app-bravo|backstage)$'
+        schedule:
+          frequency: { minutes: 10 }
+          timeout: { minutes: 3 }
