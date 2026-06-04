@@ -41,6 +41,10 @@ backend.add(
 
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
+// GitHub org discovery — registers catalog-info.yaml Components from the asanexample app repos.
+// Config + schedule in app-config.production.yaml (catalog.providers.github). Auth is the read-only
+// GitHub App (integrations.github.apps). See docs/runbooks/backstage-github-app.md.
+backend.add(import('@backstage/plugin-catalog-backend-module-github'));
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));
