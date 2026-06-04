@@ -32,33 +32,25 @@ backend:
       #     $file: <file-path>/ca/server.crt
 
 auth:
-  # Production sign-in is OIDC against the platform Dex broker (Identity Center → Dex → Backstage).
-  # `environment: production` selects the `production` key under each provider below and is the
-  # environment the frontend OAuth2 API requests (see packages/app/src/modules/auth). Guest is
-  # deliberately absent here and from the base config — see app-config.yaml.
+  # Production sign-in is via the oauth2-proxy that fronts the portal (#202). The proxy does the OIDC dance
+  # with the Dex broker (Identity Center → Dex) and owns a durable 24h session cookie; this provider
+  # establishes the Backstage identity from the proxy-injected X-Forwarded-* headers, so /refresh on reload
+  # always succeeds (SAML/Dex issues no refresh token — see packages/app/src/modules/auth + docs/runbooks/dex-sso.md).
+  # Guest is deliberately absent here and from the base config — see app-config.yaml.
+  #
+  # SECURITY: this provider trusts the forwarded headers WITHOUT verification, so it is only safe because the
+  # backstage Service (:7007) is network-locked to the oauth2-proxy pod (platform backstage module
+  # NetworkPolicy). Backstage must never be reachable except through the proxy.
   environment: production
   providers:
-    oidc:
-      production:
-        # Dex's OIDC discovery document. Dex is the centralized SAML→OIDC broker; see
-        # docs/runbooks/dex-sso.md and infra/modules/dex in the platform repo.
-        metadataUrl: https://sso.aws.refplat.org/.well-known/openid-configuration
-        clientId: backstage
-        # Injected by the deployment from the platform/backstage/oidc Secrets Manager secret
-        # (ExternalSecret → K8s Secret → OIDC_CLIENT_SECRET env). Shared with Dex's staticClient.
-        clientSecret: ${OIDC_CLIENT_SECRET}
-        # NB: no `additionalScopes: offline_access`. The upstream is Identity Center via Dex's SAML connector,
-        # which (per the SAML 2.0 protocol) ignores offline_access and never issues a refresh token. So the
-        # backend can never set a refresh cookie and silent /refresh always 401s — session persistence across
-        # reloads is handled on the frontend with the SignInPage `auto` flow instead (see packages/app auth module).
-        prompt: auto
-        # Phase 2.1 is login-only: issue a Backstage identity straight from the email claim
-        # without requiring a matching catalog User entity (no catalog Users/Groups until 2.3).
-        # Group-based admin RBAC is a deferred follow-up (needs the permission framework).
-        signIn:
-          resolvers:
-            - resolver: emailLocalPartMatchingUserEntityName
-              dangerouslyAllowSignInWithoutUserInCatalog: true
+    oauth2Proxy:
+      # Login-only (Phase 2.1): issue a Backstage identity straight from the proxy-provided email without
+      # requiring a matching catalog User entity. dangerouslyAllowSignInWithoutUserInCatalog is honored
+      # per-resolver. Once ADR-049 projects catalog Users, prefer requiring a real User + drop the flag.
+      signIn:
+        resolvers:
+          - resolver: emailLocalPartMatchingUserEntityName
+            dangerouslyAllowSignInWithoutUserInCatalog: true
 
 integrations:
   github:
