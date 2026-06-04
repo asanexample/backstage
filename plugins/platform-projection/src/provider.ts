@@ -76,7 +76,14 @@ export function buildEntities(
       metadata: {
         name: tenant,
         description: `Tenant "${tenant}" (team ${team})`,
-        annotations: annotations(locationUrl),
+        annotations: {
+          ...annotations(locationUrl),
+          // ArgoCD plugin (2.4b): the tenant System surfaces ALL of the team's Argo CD Applications, which
+          // carry the `platform.refplat.org/tenant=<team>` label (set by the argocd-apps ApplicationSet).
+          // instance-name pins our single ArgoCD instance for query performance.
+          'argocd/app-selector': `platform.refplat.org/tenant=${team}`,
+          'argocd/instance-name': 'platform',
+        },
         ...(spec.hostnames?.length
           ? {
               links: spec.hostnames.map(h => ({
