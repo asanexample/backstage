@@ -74,19 +74,18 @@ const oidcAuthApi = ApiBlueprint.make({
 
 // Replace the default sign-in page (which only offers `guest`) with the OIDC provider.
 //
-// `auto` makes the page initiate sign-in immediately instead of rendering a "Sign In" button. Because the
-// Backstage session is in-memory and we get no refresh token from SAML/Dex (see the OAuth2 note above), the
-// session is lost on every reload; `auto` transparently re-acquires it through the still-live Identity Center
-// session (the popup completes without user interaction), so the user isn't bounced to a sign-in screen on
-// each refresh. This uses the popup flow (the experimental redirect flow would loop: it depends on the same
-// /refresh that SAML can't satisfy).
+// NB: this is plain click-to-sign-in, NOT `auto`. Because SAML/Dex issues no refresh token (see the OAuth2
+// note above), Backstage's background /refresh always 401s and the SessionManager discards the session — so
+// `auto` produces an infinite re-auth loop (sign-in succeeds, then the next /refresh kills it, then it
+// re-fires). The session therefore can't survive a page reload with this auth chain. Seamless sessions
+// require fronting the portal with an auth proxy (oauth2-proxy) that owns its own session cookie and injects
+// identity headers, so Backstage's /refresh always succeeds — tracked separately. See docs/runbooks/dex-sso.md.
 const signInPage = SignInPageBlueprint.make({
   params: {
     loader: async () => props =>
       (
         <SignInPage
           {...props}
-          auto
           provider={{
             id: 'oidc',
             title: 'AWS SSO',
