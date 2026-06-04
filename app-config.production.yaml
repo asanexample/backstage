@@ -109,3 +109,11 @@ catalog:
         schedule:
           frequency: { minutes: 10 }
           timeout: { minutes: 3 }
+
+# Platform projection plugin (Phase 2.3a) — reads the platform repo's XTenant claims (via the read-only
+# GitHub App) and projects Groups/Systems/Resources (ADR-049). repoUrl/claimsPath/branch default to the
+# asanexample/platform main gitops/tenant-claims tree; ecrRegistry (optional) is the platform-account ECR
+# registry host — when set, the projection emits the per-team restrict-images Kyverno Resource and renders
+# ECR Resource titles as the full registry path. See plugins/platform-projection.
+platformProjection:
+  ecrRegistry: 829808296602.dkr.ecr.us-east-1.amazonaws.com
