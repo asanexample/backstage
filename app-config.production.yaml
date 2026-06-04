@@ -77,18 +77,24 @@ catalog:
   #
   # Anti-spoofing, scoped by location TYPE (rules are OR across matching rules; a per-location exact-target
   # matcher doesn't match the resolved path, so we key on type instead):
-  #   - trusted in-image `file` locations (the seed Groups below) may register org entities;
+  #   - trusted in-image `file` locations (the seed `platform` Group) may register org entities;
+  #   - the platform repo (`url` matching the platform-projection plugin's source) may register the projected
+  #     Groups/Systems/Resources — belt-and-suspenders: provider roots bypass the rule check, but if a future
+  #     Backstage tightens that, this keeps the projection working;
   #   - everything else (github `url` discovery = untrusted app self-assertion) is Components-only, so app
   #     repos can't inject a Group/System/User or forge ownership.
-  # Authoritative ownership is the 2.3 git-projection.
   rules:
     - allow: [Group, User, Location]
       locations:
         - type: file
+    - allow: [Group, System, Resource, Location]
+      locations:
+        - type: url
+          pattern: '**asanexample/platform**'
     - allow: [Component, Location]
   locations:
-    # Seed Group entities (alpha/bravo/platform) so Components resolve to a real owner. Baked into the image
-    # (Dockerfile COPY catalog). Superseded by the 2.3 projection (Identity Center groups + ADR-049 envelope).
+    # Seed `platform` Group (the platform team — not a tenant, so not projected). Baked into the image
+    # (Dockerfile COPY catalog). The team Groups (alpha/bravo) come from the platform-projection plugin.
     - type: file
       target: ./catalog/org.yaml
   providers:

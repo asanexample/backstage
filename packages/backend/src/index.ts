@@ -45,6 +45,11 @@ backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 // Config + schedule in app-config.production.yaml (catalog.providers.github). Auth is the read-only
 // GitHub App (integrations.github.apps). See docs/runbooks/backstage-github-app.md.
 backend.add(import('@backstage/plugin-catalog-backend-module-github'));
+// Platform projection (Phase 2.3a) — reads the platform repo's XTenant claims from git (via the GitHub App)
+// and projects them as Groups/Systems/Resources (ADR-049). Config under `platformProjection`.
+backend.add(
+  import('@internal/plugin-catalog-backend-module-platform-projection'),
+);
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));

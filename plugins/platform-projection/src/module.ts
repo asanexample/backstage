@@ -1,0 +1,54 @@
+import {
+  coreServices,
+  createBackendModule,
+} from '@backstage/backend-plugin-api';
+import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node';
+import { PlatformProjectionProvider } from './provider';
+
+/**
+ * Catalog backend module: registers the platform projection entity provider, which reads the platform repo's
+ * XTenant claims from git (via the GitHub App) and projects them into the catalog as Groups / Systems /
+ * Resources (ADR-049). Config under `platformProjection` (see config.d.ts).
+ */
+export const catalogModulePlatformProjection = createBackendModule({
+  pluginId: 'catalog',
+  moduleId: 'platform-projection',
+  register(reg) {
+    reg.registerInit({
+      deps: {
+        catalog: catalogProcessingExtensionPoint,
+        scheduler: coreServices.scheduler,
+        logger: coreServices.logger,
+        urlReader: coreServices.urlReader,
+        config: coreServices.rootConfig,
+      },
+      async init({ catalog, scheduler, logger, urlReader, config }) {
+        const sub = config.getOptionalConfig('platformProjection');
+        const provider = new PlatformProjectionProvider({
+          urlReader,
+          logger,
+          repoUrl:
+            sub?.getOptionalString('repoUrl') ??
+            'https://github.com/asanexample/platform',
+          claimsPath:
+            sub?.getOptionalString('claimsPath') ?? 'gitops/tenant-claims',
+          branch: sub?.getOptionalString('branch') ?? 'main',
+          ecrRegistry: sub?.getOptionalString('ecrRegistry'),
+        });
+
+        catalog.addEntityProvider(provider);
+
+        // initialDelay gives the catalog time to call provider.connect() before the first run.
+        await scheduler.scheduleTask({
+          id: 'platform-projection:refresh',
+          frequency: { minutes: 30 },
+          timeout: { minutes: 5 },
+          initialDelay: { seconds: 15 },
+          fn: async () => {
+            await provider.run();
+          },
+        });
+      },
+    });
+  },
+});

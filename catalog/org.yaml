@@ -1,27 +1,9 @@
-# Seed Group entities so catalog Components resolve to a real owner (Phase 2.2).
+# Seed Group entities (Phase 2.2) — now reduced to just `platform`.
 #
-# These are MINIMAL and a stop-gap. The Phase 2.3 projection plugin supersedes them with
-# Identity-Center-sourced Groups carrying the ADR-049 envelope fields (allowedTiers/allowedZones/quota).
-# Baked into the image (packages/backend/Dockerfile COPY catalog) and loaded via a trusted file location
-# in app-config.production.yaml that explicitly allows the Group kind.
----
-apiVersion: backstage.io/v1alpha1
-kind: Group
-metadata:
-  name: alpha
-  description: Team alpha
-spec:
-  type: team
-  children: []
----
-apiVersion: backstage.io/v1alpha1
-kind: Group
-metadata:
-  name: bravo
-  description: Team bravo
-spec:
-  type: team
-  children: []
+# The team Groups (alpha/bravo) are projected from the XTenant claims by the platform-projection plugin
+# (Phase 2.3a), so they're removed from here. `platform` is NOT a tenant (it has no XTenant claim) — it's the
+# platform team that owns platform-internal Components like the portal itself — so it stays seeded.
+# Loaded via a trusted file location in app-config.production.yaml that allows the Group kind.
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Group
