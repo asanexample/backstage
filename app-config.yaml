@@ -137,6 +137,11 @@ catalog:
 kubernetes:
   # see https://backstage.io/docs/features/kubernetes/configuration for kubernetes configuration options
 
+# ArgoCD plugin (Phase 2.4b). The real `argocd.appLocatorMethods` (instance url + read-only token) is injected
+# by the platform backstage module (env-specific; not baked into the image). See docs/runbooks/backstage-argocd.md.
+argocd:
+  # appLocatorMethods injected at deploy time.
+
 # see https://backstage.io/docs/permissions/getting-started for more on the permission framework
 permission:
   # setting this to `false` will disable permissions
