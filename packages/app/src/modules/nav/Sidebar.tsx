@@ -23,6 +23,9 @@ export const SidebarContent = NavContentBlueprint.make({
 
       // Skipped items
       nav.take('page:search'); // Using search modal instead
+      // Kubernetes is an entity tab (per-Component), not a standalone page — the global page has no entity
+      // context and errors. Consume its auto-derived nav item so it isn't rendered in the sidebar.
+      nav.take('page:kubernetes');
 
       return (
         <Sidebar>
