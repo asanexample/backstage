@@ -19,7 +19,10 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Native arm64 runner: the platform runs on Graviton/t4g nodes, so the image must be arm64. The whole job
+    # must be arm64 (not just the docker build) because the backend is built on the host first — `yarn install`
+    # compiles native node modules for the runner's arch, and they're packaged into the image as-is.
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +53,7 @@ jobs:
           context: .
           file: packages/backend/Dockerfile
           push: true
+          platforms: linux/arm64 # arm64-only — the platform is all-Graviton (native build on the arm64 runner)
           tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ github.sha }}
 
       - name: Install cosign
