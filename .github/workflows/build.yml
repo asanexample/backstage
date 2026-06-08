@@ -16,11 +16,6 @@ permissions:
 env:
   ECR_REGISTRY: 829808296602.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPO: platform/backstage
-  # Let corepack fetch the pinned yarn (packageManager: yarn@4.4.1) non-interactively. On the arm64 runner
-  # (ubuntu-24.04-arm) yarn isn't pre-cached, so `yarn install` triggers a corepack DOWNLOAD — and corepack
-  # 0.31+ aborts a download without a TTY confirmation unless this is set. Without it the host build never runs,
-  # so packages/backend/dist/{bundle,skeleton}.tar.gz are never produced and the Docker COPY fails ("not found").
-  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 
 jobs:
   build:
@@ -37,10 +32,19 @@ jobs:
 
       - name: Install + build the backend (host build)
         run: |
-          corepack enable
-          yarn install --immutable
-          yarn tsc
-          yarn build:backend
+          # Invoke the committed yarn binary DIRECTLY (yarnPath: .yarn/releases/yarn-4.4.1.cjs). Do NOT use
+          # `corepack enable`: on the arm64 runner corepack ignores yarnPath and tries to DOWNLOAD yarn 4.4.1,
+          # which (even with the prompt disabled) left the install/build as a <1s no-op — so
+          # packages/backend/dist/{bundle,skeleton}.tar.gz were never produced and the Docker COPY failed
+          # ("not found"), leaving the ECR repo empty. Direct invocation needs no network + is deterministic.
+          # set -x + the final ls turn a build failure into a loud error here instead of a missing-artifact
+          # failure two steps later in the Docker build.
+          set -euxo pipefail
+          YARN="node .yarn/releases/yarn-4.4.1.cjs"
+          $YARN install --immutable
+          $YARN tsc
+          $YARN build:backend
+          ls -la packages/backend/dist/bundle.tar.gz packages/backend/dist/skeleton.tar.gz
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
