@@ -16,6 +16,11 @@ permissions:
 env:
   ECR_REGISTRY: 829808296602.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPO: platform/backstage
+  # Let corepack fetch the pinned yarn (packageManager: yarn@4.4.1) non-interactively. On the arm64 runner
+  # (ubuntu-24.04-arm) yarn isn't pre-cached, so `yarn install` triggers a corepack DOWNLOAD — and corepack
+  # 0.31+ aborts a download without a TTY confirmation unless this is set. Without it the host build never runs,
+  # so packages/backend/dist/{bundle,skeleton}.tar.gz are never produced and the Docker COPY fails ("not found").
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
 
 jobs:
   build:
