@@ -33,7 +33,9 @@ backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // record) over OIDC. Keycloak issues refresh tokens, so the silent /refresh on reload succeeds and the
 // session survives without a fronting proxy — the move off SAML/Dex removed the need for oauth2-proxy
 // (#202). Config: app-config.production.yaml (auth.providers.oidc).
-backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
+// Our local module replaces the stock oidc-provider module: it registers providerId `oidc` with a custom
+// resolver that attaches Keycloak group membership to the identity (ownershipEntityRefs) for RBAC (#197).
+backend.add(import('./authOidcModule'));
 
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend'));
@@ -55,10 +57,10 @@ backend.add(
 
 // permission plugin
 backend.add(import('@backstage/plugin-permission-backend'));
-// See https://backstage.io/docs/permissions/getting-started for how to create your own permission policy
-backend.add(
-  import('@backstage/plugin-permission-backend-module-allow-all-policy'),
-);
+// Centric group-based RBAC policy (#197): platform-admins -> full access; everyone reads the catalog;
+// team members write/delete only entities their team owns; other writes admin-only. Group membership comes
+// from the Keycloak `groups` claim via the custom sign-in resolver (./authOidcModule). Replaces allow-all.
+backend.add(import('./permissions/permissionPolicyModule'));
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
