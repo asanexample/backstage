@@ -6,7 +6,22 @@
   "backstage": {
     "role": "frontend"
   },
-  "configSchema": "config.d.ts",
+  "configSchema": {
+    "$schema": "https://backstage.io/schema/config-v1",
+    "type": "object",
+    "properties": {
+      "signOut": {
+        "type": "object",
+        "properties": {
+          "keycloakLogoutUrl": {
+            "type": "string",
+            "visibility": "frontend",
+            "description": "Keycloak RP-initiated logout (end-session) endpoint for the realm. When set, the sidebar Sign out control redirects here (with id_token_hint + post_logout_redirect_uri) after clearing the local Backstage session, ending the Keycloak SSO session too. Unset in local guest dev."
+          }
+        }
+      }
+    }
+  },
   "scripts": {
     "start": "backstage-cli package start",
     "build": "backstage-cli package build",
