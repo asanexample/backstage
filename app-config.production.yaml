@@ -32,25 +32,30 @@ backend:
       #     $file: <file-path>/ca/server.crt
 
 auth:
-  # Production sign-in is via the oauth2-proxy that fronts the portal (#202). The proxy does the OIDC dance
-  # with the Dex broker (Identity Center → Dex) and owns a durable 24h session cookie; this provider
-  # establishes the Backstage identity from the proxy-injected X-Forwarded-* headers, so /refresh on reload
-  # always succeeds (SAML/Dex issues no refresh token — see packages/app/src/modules/auth + docs/runbooks/dex-sso.md).
+  # Production sign-in is direct OIDC against Keycloak (the platform IdP of record). Keycloak issues refresh
+  # tokens, so Backstage's silent /refresh on reload succeeds and the session survives reloads — no fronting
+  # proxy needed. (Was Backstage → oauth2-proxy → Keycloak, itself a workaround for SAML/Dex's missing refresh
+  # token, #202; the move to Keycloak OIDC retired both Dex and oauth2-proxy. See packages/app/src/modules/auth
+  # and docs/architecture/identity-and-sso.md in the platform repo.)
   # Guest is deliberately absent here and from the base config — see app-config.yaml.
-  #
-  # SECURITY: this provider trusts the forwarded headers WITHOUT verification, so it is only safe because the
-  # backstage Service (:7007) is network-locked to the oauth2-proxy pod (platform backstage module
-  # NetworkPolicy). Backstage must never be reachable except through the proxy.
   environment: production
   providers:
-    oauth2Proxy:
-      # Login-only (Phase 2.1): issue a Backstage identity straight from the proxy-provided email without
-      # requiring a matching catalog User entity. dangerouslyAllowSignInWithoutUserInCatalog is honored
-      # per-resolver. Once ADR-049 projects catalog Users, prefer requiring a real User + drop the flag.
-      signIn:
-        resolvers:
-          - resolver: emailLocalPartMatchingUserEntityName
-            dangerouslyAllowSignInWithoutUserInCatalog: true
+    oidc:
+      production:
+        # Keycloak realm discovery. The backend resolves this host in-cluster via a hostAliases entry to the
+        # gateway ClusterIP (platform backstage module); the browser reaches it over Tailscale. clientId +
+        # secret are the `backstage` confidential client provisioned by keycloak-config (secret synced from
+        # Secrets Manager platform/keycloak/backstage-oidc → OIDC_CLIENT_SECRET).
+        metadataUrl: https://keycloak.aws.refplat.org/realms/platform/.well-known/openid-configuration
+        clientId: backstage
+        clientSecret: ${OIDC_CLIENT_SECRET}
+        prompt: auto
+        # Login-only (Phase 2.1): issue a Backstage identity straight from the email claim without requiring a
+        # matching catalog User entity. Once ADR-049 projects catalog Users, prefer requiring a real User.
+        signIn:
+          resolvers:
+            - resolver: emailLocalPartMatchingUserEntityName
+              dangerouslyAllowSignInWithoutUserInCatalog: true
 
 integrations:
   github:

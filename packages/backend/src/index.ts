@@ -29,12 +29,11 @@ backend.add(import('@backstage/plugin-auth-backend'));
 // guest provider — local development only (configured in app-config.local.yaml, never in production).
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 // See https://backstage.io/docs/auth/guest/provider
-// oauth2-proxy provider — production SSO. The portal is fronted by oauth2-proxy (which does the OIDC
-// dance with the Dex broker and owns a durable session cookie); this provider establishes the Backstage
-// identity from the proxy-injected X-Forwarded-* headers. It trusts those headers, so backstage:7007 is
-// network-locked to the proxy pod (platform backstage module NetworkPolicy). Fixes logout-on-refresh
-// (#202 — SAML/Dex issues no refresh token). Config: app-config.production.yaml (auth.providers.oauth2Proxy).
-backend.add(import('@backstage/plugin-auth-backend-module-oauth2-proxy-provider'));
+// oidc provider — production SSO. Backstage authenticates directly against Keycloak (the platform IdP of
+// record) over OIDC. Keycloak issues refresh tokens, so the silent /refresh on reload succeeds and the
+// session survives without a fronting proxy — the move off SAML/Dex removed the need for oauth2-proxy
+// (#202). Config: app-config.production.yaml (auth.providers.oidc).
+backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
 
 // catalog plugin
 backend.add(import('@backstage/plugin-catalog-backend'));
