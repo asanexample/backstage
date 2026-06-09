@@ -50,12 +50,11 @@ auth:
         clientId: backstage
         clientSecret: ${OIDC_CLIENT_SECRET}
         prompt: auto
-        # Login-only (Phase 2.1): issue a Backstage identity straight from the email claim without requiring a
-        # matching catalog User entity. Once ADR-049 projects catalog Users, prefer requiring a real User.
-        signIn:
-          resolvers:
-            - resolver: emailLocalPartMatchingUserEntityName
-              dangerouslyAllowSignInWithoutUserInCatalog: true
+        # Sign-in is handled by the custom resolver in packages/backend/src/authOidcModule.ts (it reads the
+        # Keycloak `groups` claim and attaches ownershipEntityRefs for RBAC, #197). A code-supplied
+        # signInResolver is authoritative, so a declarative `signIn.resolvers` block here would be ignored.
+        # The resolver still issues an identity straight from the email claim without requiring a catalog
+        # User entity (login-only until ADR-049 projects catalog Users).
 
 # Keycloak RP-initiated logout (end-session) endpoint for the `platform` realm. The sidebar "Sign out" control
 # (frontend-visible config; see packages/app/config.d.ts + modules/auth) redirects here so logging out of
