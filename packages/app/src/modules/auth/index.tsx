@@ -20,16 +20,18 @@ import {
   createFrontendModule,
 } from '@backstage/frontend-plugin-api';
 import { SignInPageBlueprint } from '@backstage/plugin-app-react';
-import { SignInPage } from '@backstage/core-components';
+import { SignInPage, SidebarItem } from '@backstage/core-components';
 import { OAuth2 } from '@backstage/core-app-api';
 import {
   OpenIdConnectApi,
   ProfileInfoApi,
   BackstageIdentityApi,
   SessionApi,
+  useApi,
 } from '@backstage/core-plugin-api';
+import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 
-const keycloakAuthApiRef = createApiRef<
+export const keycloakAuthApiRef = createApiRef<
   OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
 >().with({
   id: 'auth.keycloak',
@@ -78,6 +80,51 @@ const signInPage = SignInPageBlueprint.make({
       ),
   },
 });
+
+/*
+ * Sidebar "Sign out" control.
+ *
+ * Backstage's SignInPage above uses `auto`, so clearing only the local Backstage session isn't enough: the
+ * page reloads and silently re-authenticates against the still-live Keycloak SSO cookie, and it looks like
+ * logout did nothing. So we also fire Keycloak's RP-initiated logout (end-session) to end the SSO session.
+ *
+ * Order matters: read the id token BEFORE signOut() clears it — Keycloak takes it as `id_token_hint` to skip
+ * the logout-confirmation prompt and end the right session. `signOut.keycloakLogoutUrl` is the realm's
+ * end-session endpoint (frontend-visible config; see config.d.ts). When it's absent (e.g. local guest dev)
+ * we just return to the app, which re-renders the sign-in page.
+ */
+export const SidebarSignOut = () => {
+  const authApi = useApi(keycloakAuthApiRef);
+  const configApi = useApi(configApiRef);
+
+  const handleSignOut = async () => {
+    let idToken: string | undefined;
+    try {
+      idToken = await authApi.getIdToken();
+    } catch {
+      // No live token — nothing to hint with; still clear the local session below.
+    }
+
+    await authApi.signOut();
+
+    const baseUrl = configApi.getString('app.baseUrl');
+    const logoutUrl = configApi.getOptionalString('signOut.keycloakLogoutUrl');
+    if (logoutUrl) {
+      const url = new URL(logoutUrl);
+      url.searchParams.set('post_logout_redirect_uri', baseUrl);
+      if (idToken) {
+        url.searchParams.set('id_token_hint', idToken);
+      }
+      window.location.href = url.toString();
+    } else {
+      window.location.href = baseUrl;
+    }
+  };
+
+  return (
+    <SidebarItem icon={ExitToAppIcon} text="Sign out" onClick={handleSignOut} />
+  );
+};
 
 export const authModule = createFrontendModule({
   pluginId: 'app',

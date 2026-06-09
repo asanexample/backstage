@@ -57,6 +57,15 @@ auth:
             - resolver: emailLocalPartMatchingUserEntityName
               dangerouslyAllowSignInWithoutUserInCatalog: true
 
+# Keycloak RP-initiated logout (end-session) endpoint for the `platform` realm. The sidebar "Sign out" control
+# (frontend-visible config; see packages/app/config.d.ts + modules/auth) redirects here so logging out of
+# Backstage also ends the Keycloak SSO session — otherwise the SignInPage's `auto` silently re-authenticates
+# against the live Keycloak cookie. The browser reaches Keycloak over Tailscale (same host it already hits for
+# the OIDC authorize redirect). The `backstage` Keycloak client must allow backstage.aws.refplat.org as a
+# post-logout redirect URI (keycloak-config in the platform repo).
+signOut:
+  keycloakLogoutUrl: https://keycloak.aws.refplat.org/realms/platform/protocol/openid-connect/logout
+
 integrations:
   github:
     # Read-only GitHub App for catalog discovery (asanexample org, app-alpha/app-bravo/backstage).
