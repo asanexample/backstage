@@ -2,7 +2,7 @@ import { buildEntities, ParsedClaim } from './provider';
 
 const claim = (name: string, spec: any): ParsedClaim => ({
   claim: {
-    apiVersion: 'platform.refplat.org/v1alpha1',
+    apiVersion: 'platform.refplat.org/v1alpha2',
     kind: 'XTenant',
     metadata: { name },
     spec,
@@ -14,14 +14,24 @@ const byKind = (es: ReturnType<typeof buildEntities>, kind: string) =>
   es.filter(e => e.kind === kind);
 
 describe('buildEntities', () => {
-  const alpha = claim('alpha', {
+  // v1alpha2 claim: Team alpha / Tenant demo / stage dev → namespace alpha-demo-dev.
+  const alpha = claim('alpha-demo-dev', {
     team: 'alpha',
-    hostnames: ['demo.preprod.aws.refplat.org'],
-    apps: { demo: { repoPath: 'k8s/preprod', preview: true } },
-    aws: { serviceAccount: 'app-alpha' },
+    name: 'demo',
+    environment: 'dev',
+    tier: 'standard',
+    domains: [{ host: 'shop.preprod.aws.refplat.org' }],
+    apps: {
+      demo: {
+        repo: 'asanexample/app-alpha',
+        repoPath: 'k8s/preprod',
+        preview: true,
+        serviceAccount: 'app-alpha',
+      },
+    },
   });
 
-  it('emits a System owned by the team Group with ADR-049 forward-compat attributes', () => {
+  it('emits a System owned by the team Group with ADR-049 placement attributes', () => {
     const sys = byKind(
       buildEntities([alpha], {
         ecrRegistry: 'acct.dkr.ecr.us-east-1.amazonaws.com',
@@ -29,25 +39,40 @@ describe('buildEntities', () => {
       'System',
     );
     expect(sys).toHaveLength(1);
-    expect(sys[0].metadata.name).toBe('alpha');
+    expect(sys[0].metadata.name).toBe('alpha-demo-dev');
     expect(sys[0].spec).toMatchObject({
       owner: 'group:alpha',
       zone: 'default',
       tier: 'standard',
+      environment: 'dev',
     });
   });
 
-  it('derives tier from complianceTier when set', () => {
+  it('derives tier from spec.tier when set', () => {
     const sys = byKind(
-      buildEntities([claim('reg', { team: 'reg', complianceTier: 'pci' })]),
+      buildEntities([
+        claim('reg-api-prod', {
+          team: 'reg',
+          name: 'api',
+          environment: 'prod',
+          tier: 'pci',
+        }),
+      ]),
       'System',
     );
-    expect(sys[0].spec).toMatchObject({ tier: 'pci' });
+    expect(sys[0].spec).toMatchObject({ tier: 'pci', environment: 'prod' });
   });
 
   it('emits a team Group, deduped across multiple claims for the same team', () => {
     const groups = byKind(
-      buildEntities([alpha, claim('alpha2', { team: 'alpha' })]),
+      buildEntities([
+        alpha,
+        claim('alpha-demo-test', {
+          team: 'alpha',
+          name: 'demo',
+          environment: 'test',
+        }),
+      ]),
       'Group',
     );
     expect(groups).toHaveLength(1);
@@ -65,17 +90,20 @@ describe('buildEntities', () => {
     const names = res.map(r => r.metadata.name);
     expect(names).toEqual(
       expect.arrayContaining([
-        'team-alpha',
-        'team-alpha-quota',
-        'ecr-team-alpha-demo',
-        'iam-pod-team-alpha', // aws.serviceAccount set
+        'alpha-demo-dev', // namespace <team>-<name>-<env>
+        'alpha-demo-dev-quota',
+        'ecr-team-alpha-demo', // ECR stays team-scoped (team-<team>/<app>)
+        'iam-pod-alpha-demo-dev-demo', // per-app role Pod-<team>-<name>-<env>-<app>
         'iam-developeraccess-alpha', // developerAccess defaults enabled
-        'kyverno-restrict-images-team-alpha', // ecrRegistry set
-        'kyverno-restrict-hostnames-team-alpha', // hostnames set
+        'kyverno-restrict-images-alpha-demo-dev', // per-namespace name; ecrRegistry set
+        'kyverno-restrict-hostnames-alpha-demo-dev', // per-namespace name; always present
       ]),
     );
     for (const r of res) {
-      expect(r.spec).toMatchObject({ owner: 'group:alpha', system: 'alpha' });
+      expect(r.spec).toMatchObject({
+        owner: 'group:alpha',
+        system: 'alpha-demo-dev',
+      });
     }
     // entity names must be valid (no '/')
     for (const n of names) expect(n).not.toMatch(/\//);
@@ -84,12 +112,22 @@ describe('buildEntities', () => {
   it('omits conditional Resources when their claim fields are absent', () => {
     const res = byKind(
       buildEntities([
-        claim('bare', { team: 'bare', developerAccess: { enabled: false } }),
+        claim('bare-svc-dev', {
+          team: 'bare',
+          name: 'svc',
+          environment: 'dev',
+          developerAccess: { enabled: false },
+        }),
       ]),
       'Resource',
     );
     const names = res.map(r => r.metadata.name);
-    expect(names).toEqual(['team-bare', 'team-bare-quota']); // no apps/aws/hostnames/ecrRegistry, dev access off
+    // No apps/ecrRegistry, dev access off → namespace, quota, and the always-present route-hostname policy.
+    expect(names).toEqual([
+      'bare-svc-dev',
+      'bare-svc-dev-quota',
+      'kyverno-restrict-hostnames-bare-svc-dev',
+    ]);
   });
 
   it('skips claims missing team or name', () => {

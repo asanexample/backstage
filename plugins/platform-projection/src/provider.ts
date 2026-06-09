@@ -6,17 +6,21 @@ import { Entity } from '@backstage/catalog-model';
 import { LoggerService, UrlReaderService } from '@backstage/backend-plugin-api';
 import { parse as parseYaml } from 'yaml';
 
-/** The XTenant claim shape we read from gitops/tenant-claims (only the fields we project). */
+/** The XTenant claim shape (platform.refplat.org/v1alpha2) we read from gitops/tenant-claims. */
 export type XTenantClaim = {
   apiVersion?: string;
   kind?: string;
   metadata?: { name?: string };
   spec?: {
     team?: string;
-    hostnames?: string[];
-    apps?: Record<string, { repoPath?: string; preview?: boolean }>;
-    aws?: { serviceAccount?: string };
-    complianceTier?: string;
+    name?: string;
+    environment?: string;
+    tier?: string;
+    domains?: Array<{ host?: string }>;
+    apps?: Record<
+      string,
+      { repo?: string; repoPath?: string; preview?: boolean; serviceAccount?: string }
+    >;
     developerAccess?: { enabled?: boolean };
   };
 };
@@ -67,6 +71,16 @@ export function buildEntities(
     const tenant = claim.metadata?.name;
     if (!team || !tenant) continue;
 
+    // v2 namespace = <team>-<name>-<env> (Composition v2). metadata.name follows the same convention, but
+    // construct it from the spec so the projection is correct even if the two ever diverge.
+    const ns =
+      spec.name && spec.environment
+        ? `${team}-${spec.name}-${spec.environment}`
+        : tenant;
+    const hosts = (spec.domains ?? [])
+      .map(d => d.host)
+      .filter((h): h is string => !!h);
+
     if (!teamGroups.has(team)) teamGroups.set(team, locationUrl);
 
     // System per tenant.
@@ -84,9 +98,9 @@ export function buildEntities(
           'argocd/app-selector': `platform.refplat.org/tenant=${team}`,
           'argocd/instance-name': 'platform',
         },
-        ...(spec.hostnames?.length
+        ...(hosts.length
           ? {
-              links: spec.hostnames.map(h => ({
+              links: hosts.map(h => ({
                 url: `https://${h}`,
                 title: h,
               })),
@@ -95,10 +109,11 @@ export function buildEntities(
       },
       spec: {
         owner: `group:${team}`,
-        // ADR-049 forward-compat placement attributes. The XRD has no zone/customer/tier yet, so today
-        // every tenant resolves to the degenerate single-zone, pooled, standard case.
+        // ADR-049 placement attributes. Zone/customer stay degenerate (single pooled zone); tier is the v2
+        // hardening profile (spec.tier), environment is the promotion stage.
         zone: 'default',
-        tier: spec.complianceTier ?? 'standard',
+        tier: spec.tier ?? 'standard',
+        environment: spec.environment ?? 'dev',
         // customer: omitted (not customer-dedicated)
       },
     });
@@ -106,30 +121,32 @@ export function buildEntities(
     // Curated Resources (mirror of the Composition's provisioned resources).
     const resources: Array<{ name: string; type: string; title: string }> = [
       {
-        name: `team-${team}`,
+        name: ns,
         type: 'kubernetes-namespace',
-        title: `team-${team} (namespace)`,
+        title: `${ns} (namespace)`,
       },
       {
-        name: `team-${team}-quota`,
+        name: `${ns}-quota`,
         type: 'resource-quota',
-        title: `team-${team} ResourceQuota`,
+        title: `${ns} ResourceQuota`,
       },
     ];
-    for (const app of Object.keys(spec.apps ?? {})) {
+    for (const [app, appcfg] of Object.entries(spec.apps ?? {})) {
+      // ECR is team-scoped + env-agnostic in v2 (team-<team>/<app>, built once, promoted across stages).
       const repo = `team-${team}/${app}`;
       resources.push({
         name: `ecr-team-${team}-${app}`,
         type: 'ecr-repository',
         title: opts.ecrRegistry ? `${opts.ecrRegistry}/${repo}` : repo,
       });
-    }
-    if (spec.aws?.serviceAccount) {
-      resources.push({
-        name: `iam-pod-team-${team}`,
-        type: 'iam-role',
-        title: `Pod-team-${team} (IAM role)`,
-      });
+      // Per-app workload IAM role (v2): Pod-<team>-<name>-<env>-<app>.
+      if (appcfg.serviceAccount) {
+        resources.push({
+          name: `iam-pod-${ns}-${app}`,
+          type: 'iam-role',
+          title: `Pod-${ns}-${app} (IAM role)`,
+        });
+      }
     }
     if (spec.developerAccess?.enabled !== false) {
       resources.push({
@@ -140,18 +157,18 @@ export function buildEntities(
     }
     if (opts.ecrRegistry) {
       resources.push({
-        name: `kyverno-restrict-images-team-${team}`,
+        name: `kyverno-restrict-images-${ns}`,
         type: 'kyverno-policy',
-        title: `restrict-images-team-${team}`,
+        title: `restrict-images-${ns}`,
       });
     }
-    if (spec.hostnames?.length) {
-      resources.push({
-        name: `kyverno-restrict-hostnames-team-${team}`,
-        type: 'kyverno-policy',
-        title: `restrict-route-hostnames-team-${team}`,
-      });
-    }
+    // Composition v2 always creates restrict-route-hostnames (the generated-host anchor), with or without
+    // spec.domains aliases — so project it unconditionally.
+    resources.push({
+      name: `kyverno-restrict-hostnames-${ns}`,
+      type: 'kyverno-policy',
+      title: `restrict-route-hostnames-${ns}`,
+    });
 
     for (const r of resources) {
       entities.push({
