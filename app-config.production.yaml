@@ -67,11 +67,17 @@ signOut:
 
 integrations:
   github:
-    # Read-only GitHub App for catalog discovery (asanexample org, app-alpha/app-bravo/backstage).
-    # Replaces the base config's ${GITHUB_TOKEN} (arrays replace on config merge). appId + private key
-    # come from platform/backstage/github-app via ExternalSecret -> env. See docs/runbooks/backstage-github-app.md.
+    # Two GitHub Apps; Backstage picks per request. ORDER IS LOAD-BEARING: org-level (repo-less) credential
+    # lookups — the catalog org discovery provider — always take the FIRST app's token, so the read-only
+    # discovery App must stay first. Repo-scoped lookups (file reads, PR creation) take the first app whose
+    # INSTALLATION covers the repo, so the two installations must stay disjoint (read App: the catalog repos;
+    # write App: asanexample/platform only). See the platform repo's
+    # docs/runbooks/backstage-scaffolder-github-app.md.
     - host: github.com
       apps:
+        # Read-only App for catalog discovery (asanexample org, app-alpha/app-bravo/backstage).
+        # Replaces the base config's ${GITHUB_TOKEN} (arrays replace on config merge). appId + private key
+        # come from platform/backstage/github-app via ExternalSecret -> env. See docs/runbooks/backstage-github-app.md.
         - appId: ${GITHUB_APP_ID}
           privateKey: ${GITHUB_APP_PRIVATE_KEY}
           # Backstage's integration schema requires clientId+clientSecret, but installation-token catalog
@@ -79,6 +85,14 @@ integrations:
           # rather than minting a real, unused OAuth client secret.
           clientId: discovery-only-unused
           clientSecret: discovery-only-unused
+        # Scaffolder WRITE App (BACK Phase 3, ADR-062 §5): Contents + Pull Requests read/write, installed on
+        # ONLY asanexample/platform — the repo self-service templates open PRs against. Never widen the read
+        # App instead. Credential from platform/backstage/scaffolder-github-app via ExternalSecret -> env
+        # (infra/modules/backstage, enable_scaffolder).
+        - appId: ${SCAFFOLDER_GITHUB_APP_ID}
+          privateKey: ${SCAFFOLDER_GITHUB_APP_PRIVATE_KEY}
+          clientId: scaffolder-unused
+          clientSecret: scaffolder-unused
 
 catalog:
   # Replaces the scaffold's example locations (demo data). The example `guest` User is gone too — the OIDC
@@ -96,7 +110,11 @@ catalog:
     - allow: [Group, User, Location]
       locations:
         - type: file
-    - allow: [Group, System, Resource, Location]
+    #   - the platform repo may additionally register Templates (BACK Phase 3, ADR-062): scaffolder templates
+    #     are platform-authored + CODEOWNERS-protected there (scaffolder/templates/); app repos must NOT be
+    #     able to self-register a Template (it defines what a self-service run can do), and the
+    #     Components-only rule below keeps it that way.
+    - allow: [Group, System, Resource, Location, Template]
       locations:
         - type: url
           pattern: '**asanexample/platform**'
@@ -106,6 +124,12 @@ catalog:
     # (Dockerfile COPY catalog). The team Groups (alpha/bravo) come from the platform-projection plugin.
     - type: file
       target: ./catalog/org.yaml
+    # Scaffolder templates (BACK Phase 3, ADR-062): the platform repo's platform-owned, CODEOWNERS-protected
+    # template tree. Allowed by the asanexample/platform url rule above (Template). Read via whichever GitHub
+    # App covers the platform repo (the write App once the read App's installation is shrunk — see the
+    # platform repo's docs/runbooks/backstage-scaffolder-github-app.md).
+    - type: url
+      target: https://github.com/asanexample/platform/blob/main/scaffolder/templates/location.yaml
   providers:
     github:
       asanexample:
