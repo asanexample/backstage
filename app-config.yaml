@@ -43,6 +43,11 @@ app:
           filter:
             kind: component
 
+# Tenant Status card (#285, ADR-064 §2): the workload cluster the card proxies XTenant GETs to.
+# preprod-use1-eks is the only tenant-hosting cluster today; override per-env if that changes.
+tenantStatus:
+  clusterName: preprod-use1-eks
+
 organization:
   name: My Company
 

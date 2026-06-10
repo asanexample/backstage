@@ -19,6 +19,16 @@
             "description": "Keycloak RP-initiated logout (end-session) endpoint for the realm. When set, the sidebar Sign out control redirects here (with id_token_hint + post_logout_redirect_uri) after clearing the local Backstage session, ending the Keycloak SSO session too. Unset in local guest dev."
           }
         }
+      },
+      "tenantStatus": {
+        "type": "object",
+        "properties": {
+          "clusterName": {
+            "type": "string",
+            "visibility": "frontend",
+            "description": "The Kubernetes cluster (as named in kubernetes.clusterLocatorMethods) the Tenant Status card (#285) proxies XTenant GETs to. Defaults to preprod-use1-eks, the workload cluster hosting tenants."
+          }
+        }
       }
     }
   },
@@ -44,7 +54,9 @@
     "@backstage/plugin-catalog": "^2.0.5",
     "@backstage/plugin-catalog-graph": "^0.6.4",
     "@backstage/plugin-catalog-import": "^0.13.13",
+    "@backstage/plugin-catalog-react": "^3.0.0",
     "@backstage/plugin-kubernetes": "^0.12.19",
+    "@backstage/plugin-kubernetes-react": "^0.5.19",
     "@backstage/plugin-notifications": "^0.5.17",
     "@backstage/plugin-org": "^0.7.4",
     "@backstage/plugin-scaffolder": "^1.37.0",

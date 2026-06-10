@@ -88,6 +88,10 @@ backend.add(import('@roadiehq/backstage-plugin-argo-cd-backend'));
 // notifications and signals plugins
 backend.add(import('@backstage/plugin-notifications-backend'));
 backend.add(import('@backstage/plugin-signals-backend'));
+// tenant-ready notifier (#285, ADR-064 §2) — polls the workload cluster's XTenant claims and pings the
+// requester when their tenant newly reaches Ready (pairs with the Tenant Status card). First-poll baselines
+// already-Ready tenants so a deploy doesn't flood the bell.
+backend.add(import('./notifications/tenantReadyModule'));
 
 // mcp actions plugin
 backend.add(import('@backstage/plugin-mcp-actions-backend'));
