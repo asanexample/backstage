@@ -33,6 +33,15 @@ app:
               - kind: system
                 metadata.annotations.argocd/app-selector:
                   $exists: true
+    # The Roadie ArgoCD full-page tab (entity-content:argocd/ArgoCdPage) ships with NO filter, so it
+    # auto-attaches to every entity — including the tenant System, where it renders BLANK: its inner
+    # ArgoCDHistoryCard needs a single `argocd/app-name`, but a tenant is multi-app and carries only
+    # `argocd/app-selector`. Restrict the tab to Components (apps, which have app-name and where it works).
+    # On the tenant System the overview card above is the ArgoCD view; the empty tab is removed.
+    - entity-content:argocd/ArgoCdPage:
+        config:
+          filter:
+            kind: component
 
 organization:
   name: My Company
