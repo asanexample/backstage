@@ -21,6 +21,8 @@ backend.add(
 );
 // platform:verify-team-membership — server-side team scoping for the self-service templates (#281)
 backend.add(import('./scaffolder/verifyTeamMembershipModule'));
+// platform:set-lifecycle-phase — deprovisioning edit step for the Deprovision Tenant template (#283)
+backend.add(import('./scaffolder/setLifecyclePhaseModule'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
