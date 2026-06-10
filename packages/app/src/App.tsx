@@ -9,9 +9,20 @@ import kubernetesPlugin from '@backstage/plugin-kubernetes/alpha';
 // Components match their Application(s) through the `argocd/app-selector` annotation in catalog-info.yaml.
 // Roadie's plugin is the only new-frontend-system-native ArgoCD plugin (it adds entity cards, not a page).
 import argocdPlugin from '@roadiehq/backstage-plugin-argo-cd/alpha';
+// Scaffolder (BACK Phase 3, ADR-062): the /create page. Templates are platform-owned (the platform repo's
+// scaffolder/templates/, registered in app-config.production.yaml); execution is admin-only for now via the
+// #197 permission policy (non-catalog writes deny). The sidebar already reserves page:scaffolder.
+import scaffolderPlugin from '@backstage/plugin-scaffolder/alpha';
 import { navModule } from './modules/nav';
 import { authModule } from './modules/auth';
 
 export default createApp({
-  features: [catalogPlugin, kubernetesPlugin, argocdPlugin, navModule, authModule],
+  features: [
+    catalogPlugin,
+    kubernetesPlugin,
+    argocdPlugin,
+    scaffolderPlugin,
+    navModule,
+    authModule,
+  ],
 });
