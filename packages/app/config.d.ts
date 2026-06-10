@@ -13,4 +13,16 @@ export interface Config {
      */
     keycloakLogoutUrl?: string;
   };
+  /**
+   * Tenant Status card (#285, ADR-064 §2).
+   */
+  tenantStatus?: {
+    /**
+     * The Kubernetes cluster (as named in kubernetes.clusterLocatorMethods) the Tenant Status card proxies
+     * XTenant GETs to. Defaults to `preprod-use1-eks` — the workload cluster hosting tenants.
+     *
+     * @visibility frontend
+     */
+    clusterName?: string;
+  };
 }

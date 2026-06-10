@@ -15,6 +15,9 @@ import argocdPlugin from '@roadiehq/backstage-plugin-argo-cd/alpha';
 import scaffolderPlugin from '@backstage/plugin-scaffolder/alpha';
 import { navModule } from './modules/nav';
 import { authModule } from './modules/auth';
+// Tenant Status card (#285, ADR-064 §2): a custom overview card on the tenant System entity rendering the live
+// XTenant provisioning journey (Submitted → Synced → Ready) + domains, via the Kubernetes plugin's proxy.
+import { tenantStatusModule } from './modules/tenant-status';
 
 export default createApp({
   features: [
@@ -24,5 +27,6 @@ export default createApp({
     scaffolderPlugin,
     navModule,
     authModule,
+    tenantStatusModule,
   ],
 });
