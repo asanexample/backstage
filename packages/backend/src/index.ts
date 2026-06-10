@@ -19,6 +19,8 @@ backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
 backend.add(
   import('@backstage/plugin-scaffolder-backend-module-notifications'),
 );
+// platform:verify-team-membership — server-side team scoping for the self-service templates (#281)
+backend.add(import('./scaffolder/verifyTeamMembershipModule'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));

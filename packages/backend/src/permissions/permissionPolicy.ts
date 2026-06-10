@@ -7,7 +7,13 @@
  *   - platform-admins (group:default/platform-admins) -> full access (admin gate)
  *   - everyone        -> READ the whole catalog (discovery preserved)
  *   - team members    -> write/delete only entities OWNED BY their team (ownership-based); cross-team denied
- *   - anything else (non-catalog writes: scaffolder/techdocs, and catalog create/register which are
+ *   - team members    -> scaffolder task create + action execute (#281, ADR-062 §1): self-service runs.
+ *                        Per-template scoping (own-team-only for New Tenant, admin-only for New Team) is
+ *                        enforced server-side by the platform:verify-team-membership action embedded as
+ *                        each template's first step — taskCreate carries no templateRef for the policy to
+ *                        key on. taskCancel is deliberately NOT granted (it would let a member cancel
+ *                        other teams' tasks); admins retain it via the admin gate.
+ *   - anything else (remaining non-catalog writes: techdocs, and catalog create/register which are
  *                    non-resource permissions with no owner to check) -> admin-only
  *
  * Catalog ingestion (GitHub discovery, the platform projection) does NOT flow through this policy — it
@@ -28,6 +34,10 @@ import {
   catalogConditions,
   createCatalogConditionalDecision,
 } from '@backstage/plugin-catalog-backend/alpha';
+import {
+  actionExecutePermission,
+  taskCreatePermission,
+} from '@backstage/plugin-scaffolder-common/alpha';
 
 /** Keycloak group whose members get unrestricted access. */
 export const PLATFORM_ADMINS_REF = 'group:default/platform-admins';
@@ -56,6 +66,15 @@ export class CentricPermissionPolicy implements PermissionPolicy {
     // (3) No identity / no groups (unauthenticated, guest, service principal) — deny any write.
     if (ownershipRefs.length === 0) {
       return { result: AuthorizeResult.DENY };
+    }
+
+    // (3b) Scaffolder execution for any team member (#281, ADR-062 §1). Reaching here implies
+    // ownershipRefs.length > 0 (step 3 rejected identity-less principals). NOT taskCancel — see header.
+    if (
+      request.permission.name === taskCreatePermission.name ||
+      request.permission.name === actionExecutePermission.name
+    ) {
+      return { result: AuthorizeResult.ALLOW };
     }
 
     // (4) Catalog writes (delete / unregister / refresh) — allow only on entities the user's team owns.
