@@ -13,5 +13,7 @@ export interface Config {
     branch?: string;
     /** ECR registry host, used only to title the ecr-repository Resources. */
     ecrRegistry?: string;
+    /** How often (minutes) to re-read the claims and refresh the projected entities. Default: 5. */
+    refreshMinutes?: number;
   };
 }

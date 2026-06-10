@@ -19,9 +19,15 @@ export type XTenantClaim = {
     domains?: Array<{ host?: string }>;
     apps?: Record<
       string,
-      { repo?: string; repoPath?: string; preview?: boolean; serviceAccount?: string }
+      {
+        repo?: string;
+        repoPath?: string;
+        preview?: boolean;
+        serviceAccount?: string;
+      }
     >;
     developerAccess?: { enabled?: boolean };
+    lifecycle?: { phase?: 'active' | 'suspended' | 'decommissioning' };
   };
 };
 
@@ -80,6 +86,9 @@ export function buildEntities(
     const hosts = (spec.domains ?? [])
       .map(d => d.host)
       .filter((h): h is string => !!h);
+    // DESIRED lifecycle phase from the claim spec in git (ADR-062 #283) — NOT live status. The cards
+    // (ArgoCD/Kubernetes) and the polished status card (#285) show live Ready/teardown; this is intent.
+    const phase = spec.lifecycle?.phase ?? 'active';
 
     if (!teamGroups.has(team)) teamGroups.set(team, locationUrl);
 
@@ -97,7 +106,18 @@ export function buildEntities(
           // instance-name pins our single ArgoCD instance for query performance.
           'argocd/app-selector': `platform.refplat.org/tenant=${team}`,
           'argocd/instance-name': 'platform',
+          // Kubernetes plugin (#284): surface the tenant's namespace workloads. The label-selector triggers
+          // the plugin's `isKubernetesAvailable` (annotation-presence) filter so the K8s tab attaches; the
+          // namespace scopes the query to this tenant. `team=<team>` is the label the demo app workloads carry.
+          'backstage.io/kubernetes-namespace': ns,
+          'backstage.io/kubernetes-label-selector': `team=${team}`,
+          // At-a-glance lifecycle (only when winding down, so the catalog highlights it).
+          ...(phase !== 'active'
+            ? { 'platform.refplat.org/lifecycle-phase': phase }
+            : {}),
         },
+        // Tag a non-active tenant so it's filterable/visible in catalog lists.
+        ...(phase !== 'active' ? { tags: [phase] } : {}),
         ...(hosts.length
           ? {
               links: hosts.map(h => ({
@@ -114,6 +134,8 @@ export function buildEntities(
         zone: 'default',
         tier: spec.tier ?? 'standard',
         environment: spec.environment ?? 'dev',
+        // Desired lifecycle phase (git intent, #283/#284) — see the `phase` note above.
+        lifecyclePhase: phase,
         // customer: omitted (not customer-dedicated)
       },
     });

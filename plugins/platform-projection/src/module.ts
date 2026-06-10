@@ -38,10 +38,14 @@ export const catalogModulePlatformProjection = createBackendModule({
 
         catalog.addEntityProvider(provider);
 
+        // Refresh cadence: the tenant entity (and its provisioning-status cards) should appear within minutes
+        // of a claim merging, not the old 30 — #284 visibility. Reading the git tree every few minutes is well
+        // within the GitHub App rate limit. Configurable via platformProjection.refreshMinutes (default 5).
+        const refreshMinutes = sub?.getOptionalNumber('refreshMinutes') ?? 5;
         // initialDelay gives the catalog time to call provider.connect() before the first run.
         await scheduler.scheduleTask({
           id: 'platform-projection:refresh',
-          frequency: { minutes: 30 },
+          frequency: { minutes: refreshMinutes },
           timeout: { minutes: 5 },
           initialDelay: { seconds: 15 },
           fn: async () => {

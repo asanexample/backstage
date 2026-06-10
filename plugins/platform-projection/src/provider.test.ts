@@ -45,7 +45,42 @@ describe('buildEntities', () => {
       zone: 'default',
       tier: 'standard',
       environment: 'dev',
+      lifecyclePhase: 'active',
     });
+  });
+
+  it('stamps the ArgoCD + Kubernetes plugin annotations for the provisioning-status cards (#284)', () => {
+    const sys = byKind(buildEntities([alpha]), 'System');
+    expect(sys[0].metadata.annotations).toMatchObject({
+      'argocd/app-selector': 'platform.refplat.org/tenant=alpha',
+      'argocd/instance-name': 'platform',
+      'backstage.io/kubernetes-namespace': 'alpha-demo-dev',
+      'backstage.io/kubernetes-label-selector': 'team=alpha',
+    });
+    // An active tenant carries no lifecycle tag/annotation.
+    expect(sys[0].metadata.tags ?? []).not.toContain('decommissioning');
+    expect(
+      sys[0].metadata.annotations?.['platform.refplat.org/lifecycle-phase'],
+    ).toBeUndefined();
+  });
+
+  it('surfaces a non-active lifecycle phase (#283/#284): spec field + tag + annotation', () => {
+    const sys = byKind(
+      buildEntities([
+        claim('alpha-demo-dev', {
+          team: 'alpha',
+          name: 'demo',
+          environment: 'dev',
+          lifecycle: { phase: 'decommissioning' },
+        }),
+      ]),
+      'System',
+    );
+    expect(sys[0].spec).toMatchObject({ lifecyclePhase: 'decommissioning' });
+    expect(sys[0].metadata.tags).toContain('decommissioning');
+    expect(
+      sys[0].metadata.annotations?.['platform.refplat.org/lifecycle-phase'],
+    ).toBe('decommissioning');
   });
 
   it('derives tier from spec.tier when set', () => {
