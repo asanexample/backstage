@@ -5,11 +5,34 @@ app:
   # Enable all packages by default, this will discover packages from packages/app/package.json
   packages: all
 
+  # NB: config arrays REPLACE on merge across app-config files, so ALL app.extensions live here in the base
+  # config (production.yaml must not declare its own app.extensions or it would drop these).
   extensions:
     # Configure the catalog index page to be the root page, this is normally mounted on /catalog
     - page:catalog:
         config:
           path: /
+    # Tenant provisioning visibility (#284, ADR-064): the Roadie ArgoCD cards default to filter "kind:component",
+    # so they don't render on the tenant **System** entity (projected by platform-projection). Widen them to
+    # also match Systems that carry the `argocd/app-selector` annotation — so the tenant page shows the team's
+    # ArgoCD sync/health. Structured predicate (not a string) avoids the deprecation warning; $any keeps
+    # Components working unchanged. (The Kubernetes tab needs no override — its filter is annotation-presence.)
+    - entity-card:argocd/overviewCard:
+        config:
+          filter:
+            $any:
+              - kind: component
+              - kind: system
+                metadata.annotations.argocd/app-selector:
+                  $exists: true
+    - entity-card:argocd/historyCard:
+        config:
+          filter:
+            $any:
+              - kind: component
+              - kind: system
+                metadata.annotations.argocd/app-selector:
+                  $exists: true
 
 organization:
   name: My Company
