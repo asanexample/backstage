@@ -68,6 +68,36 @@ describe('parseTenantStatus', () => {
     expect(s.steps.some(st => st.state === 'error')).toBe(false);
   });
 
+  it('suppresses misleading deltas when the timeline is incoherent (re-synced tenant)', () => {
+    // A mature tenant: Synced re-fired LATER than Ready last transitioned → not monotonic.
+    const s = parseTenantStatus(
+      xtenant({
+        status: {
+          conditions: [
+            {
+              type: 'Synced',
+              status: 'True',
+              reason: 'ReconcileSuccess',
+              lastTransitionTime: '2026-06-10T11:53:50Z',
+            },
+            {
+              type: 'Ready',
+              status: 'True',
+              reason: 'Available',
+              lastTransitionTime: '2026-06-10T10:29:31Z',
+            },
+          ],
+        },
+      }),
+    );
+    expect(s.phase).toBe('ready'); // still Ready — just no bogus timing
+    expect(s.readySeconds).toBeUndefined(); // no "provisioned in 7h"
+    const byKey = Object.fromEntries(s.steps.map(st => [st.key, st]));
+    expect(byKey.synced.deltaSeconds).toBeUndefined();
+    expect(byKey.ready.deltaSeconds).toBeUndefined();
+    expect(byKey.ready.at).toBe('2026-06-10T10:29:31Z'); // absolute timestamp still shown
+  });
+
   it('shows provisioning when Synced but not yet Ready', () => {
     const s = parseTenantStatus(
       xtenant({
