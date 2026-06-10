@@ -100,6 +100,20 @@ const fmtTime = (iso?: string) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString();
 };
 
+// Seconds → a compact human duration ("52s", "1m 32s", "7h 31m") — raw seconds read terribly for anything
+// past a minute.
+const humanizeDuration = (s: number): string => {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return sec ? `${m}m ${sec}s` : `${m}m`;
+  }
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  return m ? `${h}h ${m}m` : `${h}h`;
+};
+
 const HeaderStatus = ({ status }: { status: TenantStatus }) => {
   const classes = useStyles();
   const { phase, readySeconds } = status;
@@ -108,7 +122,7 @@ const HeaderStatus = ({ status }: { status: TenantStatus }) => {
       icon: <StatusOK />,
       text: `Ready${
         typeof readySeconds === 'number'
-          ? ` · provisioned in ${readySeconds}s`
+          ? ` · provisioned in ${humanizeDuration(readySeconds)}`
           : ''
       }`,
     },
@@ -149,7 +163,7 @@ const Step = ({ step, last }: { step: TimelineStep; last: boolean }) => {
             >
               {fmtTime(step.at)}
               {typeof step.deltaSeconds === 'number' && step.deltaSeconds > 0
-                ? ` (+${step.deltaSeconds}s)`
+                ? ` (+${humanizeDuration(step.deltaSeconds)})`
                 : ''}
             </Typography>
           )}

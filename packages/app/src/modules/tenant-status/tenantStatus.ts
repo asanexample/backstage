@@ -101,6 +101,28 @@ export function parseTenantStatus(xt: any): TenantStatus {
     readyState = 'active'; // synced, still provisioning the footprint
   }
 
+  // A tenant that's been re-synced many times (cutover churn, generation bumps) has condition
+  // lastTransitionTimes that no longer form a clean Created → Synced → Ready sequence — Synced re-fires on
+  // every reconcile while Ready stays put, so "elapsed since creation" becomes meaningless (even negative).
+  // Only surface the +Δ / "time to ready" numbers when the timeline is COHERENT (monotonic forward); a messy
+  // mature tenant then degrades to honest absolute timestamps rather than a misleading "provisioned in 7h".
+  const tCreated = createdAt ? Date.parse(createdAt) : NaN;
+  const tSynced = synced?.lastTransitionTime
+    ? Date.parse(synced.lastTransitionTime)
+    : NaN;
+  const tReady =
+    ready?.status === 'True' && ready?.lastTransitionTime
+      ? Date.parse(ready.lastTransitionTime)
+      : NaN;
+  const monotonic = (...ts: number[]): boolean => {
+    const known = ts.filter(t => Number.isFinite(t));
+    for (let i = 1; i < known.length; i++) {
+      if (known[i] < known[i - 1]) return false;
+    }
+    return true;
+  };
+  const coherent = monotonic(tCreated, tSynced, tReady);
+
   const steps: TimelineStep[] = [
     {
       key: 'created',
@@ -114,7 +136,9 @@ export function parseTenantStatus(xt: any): TenantStatus {
       label: 'Synced',
       state: syncedState,
       at: synced?.lastTransitionTime,
-      deltaSeconds: deltaSec(createdAt, synced?.lastTransitionTime),
+      deltaSeconds: coherent
+        ? deltaSec(createdAt, synced?.lastTransitionTime)
+        : undefined,
       detail: synced?.reason ?? synced?.message,
     },
     {
@@ -123,7 +147,7 @@ export function parseTenantStatus(xt: any): TenantStatus {
       state: readyState,
       at: ready?.status === 'True' ? ready?.lastTransitionTime : undefined,
       deltaSeconds:
-        ready?.status === 'True'
+        coherent && ready?.status === 'True'
           ? deltaSec(createdAt, ready?.lastTransitionTime)
           : undefined,
       detail:
@@ -142,7 +166,7 @@ export function parseTenantStatus(xt: any): TenantStatus {
     }));
 
   const readySeconds =
-    ready?.status === 'True'
+    coherent && ready?.status === 'True'
       ? deltaSec(createdAt, ready?.lastTransitionTime)
       : undefined;
 
