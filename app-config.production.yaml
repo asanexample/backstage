@@ -114,10 +114,15 @@ catalog:
     #     are platform-authored + CODEOWNERS-protected there (scaffolder/templates/); app repos must NOT be
     #     able to self-register a Template (it defines what a self-service run can do), and the
     #     Components-only rule below keeps it that way.
+    #   NB pattern semantics (minimatch): '**' is only a cross-separator globstar as a WHOLE path segment;
+    #   glued to text ('**asanexample…') it degrades to a single '*' and never matches a URL — the old
+    #   '**asanexample/platform**' pattern matched NOTHING (latent until Templates, the first entities to
+    #   actually need this rule: providers bypass rule checks). Verified against the live location targets
+    #   (blob/ AND tree/ — the catalog rewrites one to the other for directory reads).
     - allow: [Group, System, Resource, Location, Template]
       locations:
         - type: url
-          pattern: '**asanexample/platform**'
+          pattern: 'https://github.com/asanexample/platform/**'
     - allow: [Component, Location]
   locations:
     # Seed `platform` Group (the platform team — not a tenant, so not projected). Baked into the image
