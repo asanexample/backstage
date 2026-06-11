@@ -18,6 +18,9 @@ import { authModule } from './modules/auth';
 // Tenant Status card (#285, ADR-064 §2): a custom overview card on the tenant System entity rendering the live
 // XTenant provisioning journey (Submitted → Synced → Ready) + domains, via the Kubernetes plugin's proxy.
 import { tenantStatusModule } from './modules/tenant-status';
+// Team Tenants card: on a team's Group page, lists the tenants it owns (env/tier/lifecycle, linking to each
+// tenant System). Makes the team→tenant relationship navigable in one readable table.
+import { teamTenantsModule } from './modules/team-tenants';
 
 export default createApp({
   features: [
@@ -28,5 +31,6 @@ export default createApp({
     navModule,
     authModule,
     tenantStatusModule,
+    teamTenantsModule,
   ],
 });

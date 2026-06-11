@@ -32,6 +32,7 @@ export const catalogModulePlatformProjection = createBackendModule({
             'https://github.com/asanexample/platform',
           claimsPath:
             sub?.getOptionalString('claimsPath') ?? 'gitops/tenant-claims',
+          teamsPath: sub?.getOptionalString('teamsPath') ?? 'gitops/teams',
           branch: sub?.getOptionalString('branch') ?? 'main',
           ecrRegistry: sub?.getOptionalString('ecrRegistry'),
         });

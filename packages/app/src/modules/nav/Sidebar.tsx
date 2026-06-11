@@ -10,6 +10,7 @@ import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import { SidebarLogo } from './SidebarLogo';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
+import GroupIcon from '@material-ui/icons/Group';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
@@ -37,6 +38,13 @@ export const SidebarContent = NavContentBlueprint.make({
           <SidebarDivider />
           <SidebarGroup label="Menu" icon={<MenuIcon />}>
             {nav.take('page:catalog')}
+            {/* Teams: the catalog pre-filtered to team Groups — one-click "all teams" overview (each team's
+                page lists its tenants + the catalog graph shows the team→tenant relationships). */}
+            <SidebarItem
+              icon={GroupIcon}
+              to="/catalog?filters[kind]=group"
+              text="Teams"
+            />
             {nav.take('page:scaffolder')}
             <SidebarDivider />
             <SidebarScrollWrapper>
