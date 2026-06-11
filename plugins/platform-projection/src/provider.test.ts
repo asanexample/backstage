@@ -1,4 +1,4 @@
-import { buildEntities, ParsedClaim } from './provider';
+import { buildEntities, ParsedClaim, ParsedTeam } from './provider';
 
 const claim = (name: string, spec: any): ParsedClaim => ({
   claim: {
@@ -8,6 +8,16 @@ const claim = (name: string, spec: any): ParsedClaim => ({
     spec,
   },
   locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/tenant-claims/preprod/${name}.yaml`,
+});
+
+const team = (name: string, spec: any = {}): ParsedTeam => ({
+  team: {
+    apiVersion: 'platform.refplat.org/v1alpha2',
+    kind: 'Team',
+    metadata: { name },
+    spec,
+  },
+  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/teams/${name}.yaml`,
 });
 
 const byKind = (es: ReturnType<typeof buildEntities>, kind: string) =>
@@ -33,7 +43,7 @@ describe('buildEntities', () => {
 
   it('emits a System owned by the team Group with ADR-049 placement attributes', () => {
     const sys = byKind(
-      buildEntities([alpha], {
+      buildEntities([alpha], [], {
         ecrRegistry: 'acct.dkr.ecr.us-east-1.amazonaws.com',
       }),
       'System',
@@ -117,7 +127,7 @@ describe('buildEntities', () => {
 
   it('emits curated Resources owned by the Group and contained by the System', () => {
     const res = byKind(
-      buildEntities([alpha], {
+      buildEntities([alpha], [], {
         ecrRegistry: 'acct.dkr.ecr.us-east-1.amazonaws.com',
       }),
       'Resource',
@@ -169,5 +179,58 @@ describe('buildEntities', () => {
     expect(
       buildEntities([{ claim: { spec: {} } as any, locationUrl: 'x' }]),
     ).toHaveLength(0);
+  });
+
+  it('emits a Group for a Team CR with NO tenants yet (a freshly-onboarded team)', () => {
+    const groups = byKind(
+      buildEntities(
+        [],
+        [
+          team('delta', {
+            ssoGroup: 'Dev-delta',
+            envelope: {
+              allowedTiers: ['standard'],
+              allowedEnvironments: ['dev', 'test'],
+              quotaCap: { cpu: '8', memory: '16Gi', pods: 40 },
+            },
+          }),
+        ],
+      ),
+      'Group',
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].metadata.name).toBe('delta');
+    expect(groups[0].spec).toMatchObject({ type: 'team' });
+    // enriched with envelope + a 0-tenant count
+    const ann = groups[0].metadata.annotations ?? {};
+    expect(ann['platform.refplat.org/sso-group']).toBe('Dev-delta');
+    expect(ann['platform.refplat.org/envelope-tiers']).toBe('standard');
+    expect(ann['platform.refplat.org/envelope-environments']).toBe('dev,test');
+    expect(ann['platform.refplat.org/tenant-count']).toBe('0');
+    expect(groups[0].metadata.description).toContain('0 tenants');
+  });
+
+  it('a team with BOTH a Team CR and claims yields ONE Group, sourced from the Team CR', () => {
+    const es = buildEntities(
+      [alpha, claim('alpha-demo-test', { team: 'alpha', name: 'demo', environment: 'test' })],
+      [team('alpha', { ssoGroup: 'Dev-alpha', envelope: { allowedTiers: ['standard'], allowedEnvironments: ['dev'] } })],
+    );
+    const groups = byKind(es, 'Group');
+    expect(groups).toHaveLength(1);
+    expect(groups[0].metadata.name).toBe('alpha');
+    // attributed to the Team CR file, enriched, and counting its 2 tenants
+    expect(groups[0].metadata.annotations?.['backstage.io/managed-by-location']).toContain('gitops/teams/alpha.yaml');
+    expect(groups[0].metadata.annotations?.['platform.refplat.org/sso-group']).toBe('Dev-alpha');
+    expect(groups[0].metadata.annotations?.['platform.refplat.org/tenant-count']).toBe('2');
+    // the System still owns up to the Group
+    expect(byKind(es, 'System')[0].spec).toMatchObject({ owner: 'group:alpha' });
+  });
+
+  it('still emits a fallback Group for a claim whose Team CR is absent (git desync)', () => {
+    const groups = byKind(
+      buildEntities([claim('ghost-svc-dev', { team: 'ghost', name: 'svc', environment: 'dev' })], []),
+      'Group',
+    );
+    expect(groups.map(g => g.metadata.name)).toEqual(['ghost']);
   });
 });

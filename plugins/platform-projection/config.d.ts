@@ -9,6 +9,8 @@ export interface Config {
     repoUrl?: string;
     /** Path to the tenant-claims directory in the repo. Default: gitops/tenant-claims */
     claimsPath?: string;
+    /** Path to the Team CRs directory. Each Team CR → a catalog Group (even with no tenants). Default: gitops/teams */
+    teamsPath?: string;
     /** Branch to read. Default: main */
     branch?: string;
     /** ECR registry host, used only to title the ecr-repository Resources. */
