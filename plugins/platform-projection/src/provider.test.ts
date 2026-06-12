@@ -248,40 +248,37 @@ describe('buildEntities', () => {
 // ---------------------------------------------------------------------------
 
 const product = (
-  team: string,
+  tm: string,
   short: string,
   spec: any = {},
 ): ParsedProduct => ({
   product: {
     apiVersion: 'platform.refplat.org/v1alpha3',
     kind: 'Product',
-    metadata: { name: `${team}-${short}` },
-    spec: { team, repo: `asanexample/${team}-${short}`, ...spec },
+    metadata: { name: `${tm}-${short}` },
+    spec: { team: tm, repo: `asanexample/${tm}-${short}`, ...spec },
   },
-  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/products/${team}/${short}.yaml`,
+  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/products/${tm}/${short}.yaml`,
 });
 
-const environment = (
-  name: string,
-  spec: any,
-): ParsedEnvironment => ({
+const environment = (envName: string, spec: any): ParsedEnvironment => ({
   env: {
     apiVersion: 'platform.refplat.org/v1alpha3',
     kind: 'XEnvironment',
-    metadata: { name },
+    metadata: { name: envName },
     spec,
   },
   locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/environments/${spec.team}/${spec.product}/${spec.stage}.yaml`,
 });
 
-const v3team = (name: string, spec: any = {}): ParsedTeam => ({
+const v3team = (teamName: string, spec: any = {}): ParsedTeam => ({
   team: {
     apiVersion: 'platform.refplat.org/v1alpha3',
     kind: 'Team',
-    metadata: { name },
+    metadata: { name: teamName },
     spec,
   },
-  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/teams/${name}.yaml`,
+  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/teams/${teamName}.yaml`,
 });
 
 const v3 = (es: ReturnType<typeof buildV3Entities>, kind: string) =>
