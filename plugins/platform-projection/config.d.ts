@@ -11,6 +11,16 @@ export interface Config {
     claimsPath?: string;
     /** Path to the Team CRs directory. Each Team CR → a catalog Group (even with no tenants). Default: gitops/teams */
     teamsPath?: string;
+    /**
+     * Projection mode (ADR-067). 'v2' (default) projects gitops/tenant-claims (XTenant) → System-per-tenant.
+     * 'v3' projects gitops/products (Product → System) + gitops/environments (XEnvironment → custom kind
+     * Environment); Services are repo-native Components. The cutover flips this to 'v3'.
+     */
+    mode?: 'v2' | 'v3';
+    /** v3: path to the Product registry directory. Default: gitops/products */
+    productsPath?: string;
+    /** v3: path to the Environment claims directory. Default: gitops/environments */
+    environmentsPath?: string;
     /** Branch to read. Default: main */
     branch?: string;
     /** ECR registry host, used only to title the ecr-repository Resources. */

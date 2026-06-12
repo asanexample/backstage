@@ -5,6 +5,7 @@ import {
 import { Entity } from '@backstage/catalog-model';
 import { LoggerService, UrlReaderService } from '@backstage/backend-plugin-api';
 import { parse as parseYaml } from 'yaml';
+import { createHash } from 'node:crypto';
 
 /** The XTenant claim shape (platform.refplat.org/v1alpha2) we read from gitops/tenant-claims. */
 export type XTenantClaim = {
@@ -59,6 +60,17 @@ export type PlatformProjectionConfig = {
   teamsPath: string;
   branch: string;
   ecrRegistry?: string;
+  /**
+   * Projection mode (ADR-067). 'v2' (default) reads gitops/tenant-claims (XTenant) → System-per-tenant.
+   * 'v3' reads gitops/products (Product → System) + gitops/environments (XEnvironment → custom kind
+   * Environment); Services are repo-native Components. ADDITIVE: defaults to 'v2' so the live catalog is
+   * unchanged; the cutover flips it to 'v3'.
+   */
+  mode?: 'v2' | 'v3';
+  /** v3: path to the Product registry (gitops/products/<team>/<product>.yaml). */
+  productsPath?: string;
+  /** v3: path to the Environment claims (gitops/environments/<team>/<product>/<stage>.yaml). */
+  environmentsPath?: string;
 };
 
 export type PlatformProjectionOptions = PlatformProjectionConfig & {
@@ -294,6 +306,294 @@ export function buildEntities(
   return entities;
 }
 
+// ===========================================================================================================
+// v3 (ADR-067 §10) projection — Team=Group, Product=System, Service=Component (repo-native catalog-info),
+// Environment=custom `kind: Environment`. The cluster reads the projected CRs; the catalog reads the same git
+// registry (gitops/teams + gitops/products + gitops/environments). Selected by `mode: 'v3'` (additive).
+// ===========================================================================================================
+
+/** Product registry entry (platform.refplat.org/v1alpha3) — gitops/products/<team>/<product>.yaml. */
+export type ProductReg = {
+  apiVersion?: string;
+  kind?: string;
+  metadata?: { name?: string };
+  spec?: {
+    team?: string;
+    repo?: string;
+    tenancy?: 'pooled' | 'per-customer';
+    defaultIsolation?: { compute?: string };
+    domains?: string[];
+    displayName?: string;
+  };
+};
+export type ParsedProduct = { product: ProductReg; locationUrl: string };
+
+/** XEnvironment claim (platform.refplat.org/v1alpha3) — gitops/environments/<team>/<product>/<stage>.yaml. */
+export type XEnvironmentClaim = {
+  apiVersion?: string;
+  kind?: string;
+  metadata?: { name?: string };
+  spec?: {
+    team?: string;
+    product?: string;
+    stage?: string;
+    customer?: string;
+    tier?: string;
+    services?: Record<
+      string,
+      {
+        repoPath?: string;
+        serviceAccount?: string;
+        image?: string;
+        permissions?: { aws?: { policyStatements?: unknown[] } };
+      }
+    >;
+    lifecycle?: { phase?: 'active' | 'suspended' | 'decommissioning' };
+  };
+};
+export type ParsedEnvironment = { env: XEnvironmentClaim; locationUrl: string };
+
+/**
+ * The Composition / ApplicationSet namespace formula (v3-delivery.tf): `<team>-<product>[-<customer>]-<stage>`,
+ * truncate-and-hash to 63 chars (first 56 + '-' + first 6 hex of sha256(raw)). MUST match exactly, or the
+ * catalog Environment + its kubernetes-namespace annotation point at a namespace the Composition never created.
+ */
+export function nsFor(
+  team: string,
+  product: string,
+  stage: string,
+  customer?: string,
+): string {
+  const c = customer ? `-${customer}` : '';
+  const raw = `${team}-${product}${c}-${stage}`;
+  if (raw.length <= 63) return raw;
+  const hash = createHash('sha256').update(raw).digest('hex').slice(0, 6);
+  return `${raw.slice(0, 56)}-${hash}`;
+}
+
+/**
+ * Pure, deterministic v3 mapping (unit-tested). Product → `System` (owner group:team; Service Components nest
+ * via repo-native catalog-info `spec.system`). XEnvironment → custom `kind: Environment` (namespace-pinned
+ * annotations + the live-status CR pointer + lifecycle), `spec.system` = its Product (cross-stage grouping),
+ * owner group:team. Per-Service Resources mirror the Composition (product-scoped ECR, Pod role, policies).
+ * Team → `Group` (envelope-enriched; product count). Envelope tolerates v1alpha2 `allowedEnvironments` +
+ * v1alpha3 `allowedStages` across the cutover boundary.
+ */
+export function buildV3Entities(
+  products: ParsedProduct[],
+  environments: ParsedEnvironment[] = [],
+  teams: ParsedTeam[] = [],
+  opts: { ecrRegistry?: string } = {},
+): Entity[] {
+  const entities: Entity[] = [];
+
+  type TeamInfo = {
+    locationUrl: string;
+    sso?: string;
+    envelope?: NonNullable<TeamCR['spec']>['envelope'] & {
+      allowedStages?: string[];
+    };
+  };
+  const teamInfo = new Map<string, TeamInfo>();
+  for (const { team, locationUrl } of teams) {
+    const name = team.metadata?.name;
+    if (!name) continue;
+    teamInfo.set(name, {
+      locationUrl,
+      sso: team.spec?.ssoGroup,
+      envelope: team.spec?.envelope,
+    });
+  }
+
+  const productCount = new Map<string, number>();
+
+  // --- Product → System ---
+  for (const { product, locationUrl } of products) {
+    const spec = product.spec ?? {};
+    const team = spec.team;
+    // metadata.name = <team>-<product>; recover the short product name.
+    const metaName = product.metadata?.name;
+    const short =
+      team && metaName?.startsWith(`${team}-`)
+        ? metaName.slice(team.length + 1)
+        : metaName;
+    if (!team || !short) continue;
+    productCount.set(team, (productCount.get(team) ?? 0) + 1);
+    if (!teamInfo.has(team)) teamInfo.set(team, { locationUrl });
+
+    const sysName = `${team}-${short}`;
+    const domains = (spec.domains ?? []).filter((d): d is string => !!d);
+    entities.push({
+      apiVersion: API_VERSION,
+      kind: 'System',
+      metadata: {
+        name: sysName,
+        title: spec.displayName ?? short,
+        description: `Product "${short}" (team ${team})`,
+        annotations: {
+          ...annotations(locationUrl),
+          // Every one of the product's ArgoCD Applications carries team+product labels (the per-Product
+          // ApplicationSet), so the System page surfaces them all.
+          'argocd/app-selector': `platform.refplat.org/team=${team},platform.refplat.org/product=${short}`,
+          'argocd/instance-name': 'platform',
+          ...(spec.repo ? { 'github.com/project-slug': spec.repo } : {}),
+        },
+        ...(domains.length
+          ? { links: domains.map(h => ({ url: `https://${h}`, title: h })) }
+          : {}),
+      },
+      spec: {
+        owner: `group:${team}`,
+        tenancy: spec.tenancy ?? 'pooled',
+      },
+    });
+  }
+
+  // --- XEnvironment → custom kind: Environment (+ per-Service Resources) ---
+  for (const { env, locationUrl } of environments) {
+    const spec = env.spec ?? {};
+    const team = spec.team;
+    const product = spec.product;
+    const stage = spec.stage;
+    if (!team || !product || !stage) continue;
+    const customer = spec.customer;
+    const ns = nsFor(team, product, stage, customer);
+    const sysName = `${team}-${product}`;
+    const phase = spec.lifecycle?.phase ?? 'active';
+    const tier = spec.tier ?? 'standard';
+    if (!teamInfo.has(team)) teamInfo.set(team, { locationUrl });
+
+    entities.push({
+      apiVersion: API_VERSION,
+      kind: 'Environment',
+      metadata: {
+        name: ns,
+        title: `${product} · ${stage}${customer ? ` · ${customer}` : ''}`,
+        description: `Environment ${product} × ${stage}${
+          customer ? ` × ${customer}` : ''
+        } (team ${team})`,
+        annotations: {
+          ...annotations(locationUrl),
+          // Live-status pointer for the #285 card — projection-driven (apiVersion/plural/name), not hardcoded
+          // to xtenant. The card reads the projected XEnvironment CR by this path.
+          'platform.refplat.org/cr-group': 'platform.refplat.org',
+          'platform.refplat.org/cr-version': 'v1alpha3',
+          'platform.refplat.org/cr-plural': 'xenvironments',
+          'platform.refplat.org/cr-name': env.metadata?.name ?? ns,
+          // ArgoCD: this environment's Application.
+          'argocd/app-selector': `platform.refplat.org/team=${team},platform.refplat.org/product=${product}`,
+          'argocd/instance-name': 'platform',
+          // Kubernetes plugin: scope to this environment's namespace.
+          'backstage.io/kubernetes-namespace': ns,
+          'backstage.io/kubernetes-label-selector': `platform.refplat.org/team=${team},platform.refplat.org/product=${product}`,
+          ...(phase !== 'active'
+            ? { 'platform.refplat.org/lifecycle-phase': phase }
+            : {}),
+        },
+        ...(phase !== 'active' ? { tags: [phase] } : {}),
+      },
+      spec: {
+        owner: `group:${team}`,
+        // Belongs to its Product System (the cross-stage grouping #373 wants).
+        system: sysName,
+        product: sysName,
+        stage,
+        tier,
+        ...(customer ? { customer } : {}),
+        lifecyclePhase: phase,
+      },
+    });
+
+    // Per-Service Resources (mirror the v3 Composition): product-scoped ECR + per-service Pod role.
+    const resources: Array<{ name: string; type: string; title: string }> = [
+      { name: `ns-${ns}`, type: 'kubernetes-namespace', title: `${ns} (namespace)` },
+      { name: `quota-${ns}`, type: 'resource-quota', title: `${ns} ResourceQuota` },
+    ];
+    for (const [svc, cfg] of Object.entries(spec.services ?? {})) {
+      const repo = `team-${team}/${product}-${svc}`;
+      resources.push({
+        name: `ecr-${team}-${product}-${svc}`,
+        type: 'ecr-repository',
+        title: opts.ecrRegistry ? `${opts.ecrRegistry}/${repo}` : repo,
+      });
+      if (cfg?.serviceAccount || cfg?.permissions?.aws) {
+        resources.push({
+          name: `iam-pod-${ns}-${svc}`,
+          type: 'iam-role',
+          title: `Pod-${team}-${product}-${stage}-${svc} (IAM role)`,
+        });
+      }
+    }
+    if (opts.ecrRegistry) {
+      resources.push({
+        name: `kyverno-restrict-images-${ns}`,
+        type: 'kyverno-policy',
+        title: `restrict-images-${ns}`,
+      });
+    }
+    resources.push({
+      name: `kyverno-restrict-hostnames-${ns}`,
+      type: 'kyverno-policy',
+      title: `restrict-route-hostnames-${ns}`,
+    });
+
+    for (const r of resources) {
+      entities.push({
+        apiVersion: API_VERSION,
+        kind: 'Resource',
+        metadata: {
+          name: r.name,
+          title: r.title,
+          description: `${r.type} for ${ns}`,
+          annotations: annotations(locationUrl),
+        },
+        spec: { type: r.type, owner: `group:${team}`, system: sysName },
+      });
+    }
+  }
+
+  // --- Group per team (envelope-enriched; product count) ---
+  for (const [team, info] of teamInfo) {
+    const env = info.envelope;
+    const count = productCount.get(team) ?? 0;
+    const stages = env?.allowedStages ?? env?.allowedEnvironments;
+    const q = env?.quotaCap;
+    const desc: string[] = [];
+    if (info.sso) desc.push(`SSO group ${info.sso}`);
+    if (env?.allowedTiers?.length) desc.push(`tiers: ${env.allowedTiers.join(', ')}`);
+    if (stages?.length) desc.push(`stages: ${stages.join(', ')}`);
+    if (q)
+      desc.push(
+        `per-env quota ${q.cpu ?? '—'} cpu / ${q.memory ?? '—'} / ${q.pods ?? '—'} pods`,
+      );
+    desc.push(`${count} product${count === 1 ? '' : 's'}`);
+
+    entities.push({
+      apiVersion: API_VERSION,
+      kind: 'Group',
+      metadata: {
+        name: team,
+        title: `Team ${team}`,
+        description: desc.join(' · '),
+        annotations: {
+          ...annotations(info.locationUrl),
+          ...(info.sso ? { 'platform.refplat.org/sso-group': info.sso } : {}),
+          ...(env?.allowedTiers?.length
+            ? { 'platform.refplat.org/envelope-tiers': env.allowedTiers.join(',') }
+            : {}),
+          ...(stages?.length
+            ? { 'platform.refplat.org/envelope-stages': stages.join(',') }
+            : {}),
+          'platform.refplat.org/product-count': String(count),
+        },
+      },
+      spec: { type: 'team', children: [] },
+    });
+  }
+
+  return entities;
+}
+
 /**
  * Reads the platform repo's XTenant claims from git via the configured GitHub App (urlReader) and projects
  * them into the catalog. Runs on a schedule (see the backend module).
@@ -349,7 +649,7 @@ export class PlatformProjectionProvider implements EntityProvider {
     return out;
   }
 
-  /** Read the teams + claims trees, parse, and apply a full mutation. */
+  /** Read the registry trees, parse, build entities for the configured mode, and apply a full mutation. */
   async run(): Promise<void> {
     if (!this.connection) {
       throw new Error('platform-projection: not connected');
@@ -359,28 +659,53 @@ export class PlatformProjectionProvider implements EntityProvider {
       repoUrl,
       claimsPath,
       teamsPath,
+      productsPath = 'gitops/products',
+      environmentsPath = 'gitops/environments',
       branch,
       ecrRegistry,
+      mode = 'v2',
     } = this.opts;
 
-    // Teams: every Team CR → a Group (even with no tenants). Claims: each XTenant → a System + Resources.
+    // Teams: every Team CR → a Group (both modes).
     const teams: ParsedTeam[] = (
       await this.readDocs<TeamCR>(teamsPath, 'Team')
     ).map(({ doc, path }) => ({
       team: doc,
       locationUrl: `${repoUrl}/blob/${branch}/${teamsPath}/${path}`,
     }));
-    const claims: ParsedClaim[] = (
-      await this.readDocs<XTenantClaim>(claimsPath, 'XTenant')
-    ).map(({ doc, path }) => ({
-      claim: doc,
-      locationUrl: `${repoUrl}/blob/${branch}/${claimsPath}/${path}`,
-    }));
 
-    const entities = buildEntities(claims, teams, { ecrRegistry });
-    logger.info(
-      `platform-projection: ${teams.length} Team(s) + ${claims.length} XTenant claim(s) -> ${entities.length} entit(y/ies)`,
-    );
+    let entities: Entity[];
+    if (mode === 'v3') {
+      // v3 (ADR-067): Product → System, XEnvironment → custom kind Environment, Services = repo-native Components.
+      const products: ParsedProduct[] = (
+        await this.readDocs<ProductReg>(productsPath, 'Product')
+      ).map(({ doc, path }) => ({
+        product: doc,
+        locationUrl: `${repoUrl}/blob/${branch}/${productsPath}/${path}`,
+      }));
+      const environments: ParsedEnvironment[] = (
+        await this.readDocs<XEnvironmentClaim>(environmentsPath, 'XEnvironment')
+      ).map(({ doc, path }) => ({
+        env: doc,
+        locationUrl: `${repoUrl}/blob/${branch}/${environmentsPath}/${path}`,
+      }));
+      entities = buildV3Entities(products, environments, teams, { ecrRegistry });
+      logger.info(
+        `platform-projection[v3]: ${teams.length} Team(s) + ${products.length} Product(s) + ${environments.length} Environment(s) -> ${entities.length} entit(y/ies)`,
+      );
+    } else {
+      // v2: each XTenant claim → a System + Resources.
+      const claims: ParsedClaim[] = (
+        await this.readDocs<XTenantClaim>(claimsPath, 'XTenant')
+      ).map(({ doc, path }) => ({
+        claim: doc,
+        locationUrl: `${repoUrl}/blob/${branch}/${claimsPath}/${path}`,
+      }));
+      entities = buildEntities(claims, teams, { ecrRegistry });
+      logger.info(
+        `platform-projection[v2]: ${teams.length} Team(s) + ${claims.length} XTenant claim(s) -> ${entities.length} entit(y/ies)`,
+      );
+    }
 
     await this.connection.applyMutation({
       type: 'full',

@@ -1,4 +1,12 @@
-import { buildEntities, ParsedClaim, ParsedTeam } from './provider';
+import {
+  buildEntities,
+  buildV3Entities,
+  nsFor,
+  ParsedClaim,
+  ParsedEnvironment,
+  ParsedProduct,
+  ParsedTeam,
+} from './provider';
 
 const claim = (name: string, spec: any): ParsedClaim => ({
   claim: {
@@ -232,5 +240,194 @@ describe('buildEntities', () => {
       'Group',
     );
     expect(groups.map(g => g.metadata.name)).toEqual(['ghost']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v3 (ADR-067 §10) projection — Product=System, Environment=custom kind, Team=Group.
+// ---------------------------------------------------------------------------
+
+const product = (
+  team: string,
+  short: string,
+  spec: any = {},
+): ParsedProduct => ({
+  product: {
+    apiVersion: 'platform.refplat.org/v1alpha3',
+    kind: 'Product',
+    metadata: { name: `${team}-${short}` },
+    spec: { team, repo: `asanexample/${team}-${short}`, ...spec },
+  },
+  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/products/${team}/${short}.yaml`,
+});
+
+const environment = (
+  name: string,
+  spec: any,
+): ParsedEnvironment => ({
+  env: {
+    apiVersion: 'platform.refplat.org/v1alpha3',
+    kind: 'XEnvironment',
+    metadata: { name },
+    spec,
+  },
+  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/environments/${spec.team}/${spec.product}/${spec.stage}.yaml`,
+});
+
+const v3team = (name: string, spec: any = {}): ParsedTeam => ({
+  team: {
+    apiVersion: 'platform.refplat.org/v1alpha3',
+    kind: 'Team',
+    metadata: { name },
+    spec,
+  },
+  locationUrl: `https://github.com/asanexample/platform/blob/main/gitops/teams/${name}.yaml`,
+});
+
+const v3 = (es: ReturnType<typeof buildV3Entities>, kind: string) =>
+  es.filter(e => e.kind === kind);
+
+describe('nsFor', () => {
+  it('matches <team>-<product>-<stage> for short names', () => {
+    expect(nsFor('alpha', 'demo', 'dev')).toBe('alpha-demo-dev');
+  });
+  it('inserts the customer segment before the stage', () => {
+    expect(nsFor('alpha', 'shop', 'prod', 'acme')).toBe('alpha-shop-acme-prod');
+  });
+  it('truncate-and-hashes names over 63 chars (first 56 + 6-hex sha256)', () => {
+    const ns = nsFor('teamteamteam', 'productproductproduct', 'staging', 'customercustomercustomer');
+    expect(ns.length).toBeLessThanOrEqual(63);
+    expect(ns).toMatch(/^.{56}-[0-9a-f]{6}$/);
+  });
+});
+
+describe('buildV3Entities', () => {
+  const ECR = 'acct.dkr.ecr.us-east-1.amazonaws.com';
+  const demo = product('alpha', 'demo', {
+    tenancy: 'pooled',
+    domains: ['demo.preprod.aws.refplat.org'],
+  });
+  const demoDev = environment('demo-dev', {
+    team: 'alpha',
+    product: 'demo',
+    stage: 'dev',
+    tier: 'standard',
+    services: { web: { serviceAccount: 'demo-web' } },
+  });
+
+  it('projects a Product as a System owned by the team Group', () => {
+    const sys = v3(buildV3Entities([demo], [], []), 'System');
+    expect(sys).toHaveLength(1);
+    expect(sys[0].metadata.name).toBe('alpha-demo');
+    expect(sys[0].spec).toMatchObject({ owner: 'group:alpha', tenancy: 'pooled' });
+    // ArgoCD selector spans the whole product; repo surfaced; domains → links.
+    expect(sys[0].metadata.annotations?.['argocd/app-selector']).toBe(
+      'platform.refplat.org/team=alpha,platform.refplat.org/product=demo',
+    );
+    expect(sys[0].metadata.annotations?.['github.com/project-slug']).toBe('asanexample/alpha-demo');
+    expect(sys[0].metadata.links?.[0].url).toBe('https://demo.preprod.aws.refplat.org');
+  });
+
+  it('projects an XEnvironment as a custom kind Environment in its Product System', () => {
+    const envs = v3(buildV3Entities([demo], [demoDev], []), 'Environment');
+    expect(envs).toHaveLength(1);
+    const e = envs[0];
+    expect(e.metadata.name).toBe('alpha-demo-dev');
+    expect(e.spec).toMatchObject({
+      owner: 'group:alpha',
+      system: 'alpha-demo',
+      product: 'alpha-demo',
+      stage: 'dev',
+      tier: 'standard',
+      lifecyclePhase: 'active',
+    });
+    // namespace-pinned + the live-status CR pointer (xenvironments v1alpha3) for the #285 card.
+    expect(e.metadata.annotations?.['backstage.io/kubernetes-namespace']).toBe('alpha-demo-dev');
+    expect(e.metadata.annotations?.['platform.refplat.org/cr-plural']).toBe('xenvironments');
+    expect(e.metadata.annotations?.['platform.refplat.org/cr-version']).toBe('v1alpha3');
+    expect(e.metadata.annotations?.['platform.refplat.org/cr-name']).toBe('demo-dev');
+  });
+
+  it('mirrors the Composition footprint as product-scoped Resources contained by the System', () => {
+    const res = v3(buildV3Entities([demo], [demoDev], [], { ecrRegistry: ECR }), 'Resource');
+    const titles = res.map(r => r.metadata.title);
+    // product-scoped ECR team-<team>/<product>-<svc>, per-service Pod role, the per-ns policies.
+    expect(titles).toContain(`${ECR}/team-alpha/demo-web`);
+    expect(res.find(r => r.metadata.name === 'iam-pod-alpha-demo-dev-web')?.metadata.title).toBe(
+      'Pod-alpha-demo-dev-web (IAM role)',
+    );
+    expect(res.every(r => r.spec?.system === 'alpha-demo')).toBe(true);
+    expect(res.some(r => r.metadata.title === 'restrict-images-alpha-demo-dev')).toBe(true);
+  });
+
+  it('places a per-customer prod env in the customer-suffixed namespace', () => {
+    const shop = product('alpha', 'shop', { tenancy: 'per-customer' });
+    const env = environment('shop-acme-prod', {
+      team: 'alpha',
+      product: 'shop',
+      stage: 'prod',
+      customer: 'acme',
+      services: { api: { serviceAccount: 'shop-api' } },
+    });
+    const e = v3(buildV3Entities([shop], [env], []), 'Environment')[0];
+    expect(e.metadata.name).toBe('alpha-shop-acme-prod');
+    expect(e.spec).toMatchObject({ customer: 'acme', stage: 'prod' });
+    expect(e.metadata.annotations?.['backstage.io/kubernetes-namespace']).toBe('alpha-shop-acme-prod');
+  });
+
+  it('tags a decommissioning env and carries the lifecycle phase', () => {
+    const env = environment('demo-dev', {
+      team: 'alpha',
+      product: 'demo',
+      stage: 'dev',
+      lifecycle: { phase: 'decommissioning' },
+    });
+    const e = v3(buildV3Entities([demo], [env], []), 'Environment')[0];
+    expect(e.metadata.tags).toEqual(['decommissioning']);
+    expect(e.metadata.annotations?.['platform.refplat.org/lifecycle-phase']).toBe('decommissioning');
+    expect(e.spec?.lifecyclePhase).toBe('decommissioning');
+  });
+
+  it('emits a Group per team enriched with the envelope (v1alpha3 allowedStages) + product count', () => {
+    const es = buildV3Entities(
+      [demo, product('alpha', 'shop', { tenancy: 'per-customer' })],
+      [demoDev],
+      [
+        v3team('alpha', {
+          ssoGroup: 'Dev-alpha',
+          envelope: {
+            allowedTiers: ['standard'],
+            allowedStages: ['dev', 'prod'],
+            quotaCap: { cpu: '8', memory: '16Gi', pods: 40 },
+          },
+        }),
+      ],
+    );
+    const g = v3(es, 'Group');
+    expect(g).toHaveLength(1);
+    expect(g[0].metadata.annotations?.['platform.refplat.org/product-count']).toBe('2');
+    expect(g[0].metadata.annotations?.['platform.refplat.org/envelope-stages']).toBe('dev,prod');
+    expect(g[0].metadata.annotations?.['platform.refplat.org/sso-group']).toBe('Dev-alpha');
+  });
+
+  it('tolerates a v1alpha2 Team envelope (allowedEnvironments) across the cutover boundary', () => {
+    const es = buildV3Entities(
+      [demo],
+      [],
+      [v3team('alpha', { envelope: { allowedEnvironments: ['dev', 'test'] } })],
+    );
+    const g = v3(es, 'Group')[0];
+    expect(g.metadata.annotations?.['platform.refplat.org/envelope-stages']).toBe('dev,test');
+  });
+
+  it('emits a fallback Group for an environment whose Team CR / Product is absent (git desync)', () => {
+    const es = buildV3Entities(
+      [],
+      [environment('ghost-svc-dev', { team: 'ghost', product: 'svc', stage: 'dev' })],
+      [],
+    );
+    expect(v3(es, 'Group').map(g => g.metadata.name)).toEqual(['ghost']);
+    // the Environment still owns up to the (fallback) Group and references its product System.
+    expect(v3(es, 'Environment')[0].spec).toMatchObject({ owner: 'group:ghost', system: 'ghost-svc' });
   });
 });
