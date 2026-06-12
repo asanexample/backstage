@@ -1,8 +1,8 @@
 /*
- * Team Tenants card — on a team's catalog Group page, lists the tenants that team owns (the team→tenant
- * relationship made visible in one place), each with its environment, tier, and lifecycle phase, linking to
- * the tenant's System page (where the live #285 provisioning-status card lives). Data comes from the catalog
- * (the platform-projection emits Systems owned by `group:<team>`), so this is reliable + cluster-free.
+ * Team Tenants card — on a team's catalog Group page, lists the team's deployables (the v2 tenant `System` or
+ * the v3 custom `kind: Environment`), each with its stage/environment, tier, and lifecycle phase, linking to
+ * its entity page (where the live #285 provisioning-status card lives). Data comes from the catalog
+ * (`relations.ownedBy: group:<team>` + the kubernetes-namespace annotation), so this is reliable + cluster-free.
  */
 import { useEffect, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
@@ -54,17 +54,24 @@ export const TeamTenantsCard = () => {
     (async () => {
       try {
         const { items } = await catalogApi.getEntities({
+          // The team's deployables: the v2 tenant `System` OR the v3 custom `kind: Environment` (both ownedBy
+          // the team — Environments via the relation processor). The v3 Product `System` is also ownedBy the
+          // team but is NOT a deployable, so filter to entities carrying the kubernetes-namespace annotation.
           filter: {
-            kind: 'System',
+            kind: ['System', 'Environment'],
             'relations.ownedBy': `group:default/${team}`,
           },
         });
-        // Stable order: environment then name.
-        const sorted = (items as Entity[]).slice().sort((a, b) => {
-          const ea = String((a.spec as any)?.environment ?? '');
-          const eb = String((b.spec as any)?.environment ?? '');
+        const deployables = (items as Entity[]).filter(
+          e =>
+            !!e.metadata.annotations?.['backstage.io/kubernetes-namespace'],
+        );
+        // Stable order: stage/environment then name.
+        const stageOf = (e: Entity) =>
+          String((e.spec as any)?.stage ?? (e.spec as any)?.environment ?? '');
+        const sorted = deployables.slice().sort((a, b) => {
           return (
-            ea.localeCompare(eb) ||
+            stageOf(a).localeCompare(stageOf(b)) ||
             a.metadata.name.localeCompare(b.metadata.name)
           );
         });
@@ -108,19 +115,16 @@ export const TeamTenantsCard = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {value!.map(sys => {
-              const spec = (sys.spec ?? {}) as any;
+            {value!.map(item => {
+              const spec = (item.spec ?? {}) as any;
+              const stage = spec.stage ?? spec.environment; // v3 stage | v2 environment
               return (
-                <TableRow key={sys.metadata.name}>
+                <TableRow key={item.metadata.name}>
                   <TableCell>
-                    <EntityRefLink entityRef={sys} defaultKind="System" />
+                    <EntityRefLink entityRef={item} defaultKind={item.kind} />
                   </TableCell>
                   <TableCell>
-                    {spec.environment ? (
-                      <Chip size="small" label={spec.environment} />
-                    ) : (
-                      '—'
-                    )}
+                    {stage ? <Chip size="small" label={stage} /> : '—'}
                   </TableCell>
                   <TableCell>{spec.tier ?? '—'}</TableCell>
                   <TableCell>
