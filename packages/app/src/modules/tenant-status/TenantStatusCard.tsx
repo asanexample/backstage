@@ -186,6 +186,14 @@ export const TenantStatusCard = () => {
   const clusterName =
     config.getOptionalString('tenantStatus.clusterName') ?? DEFAULT_CLUSTER;
   const name = entity.metadata.name;
+  // The target composite CR is projection-driven via annotations (v3 Environment → xenvironments/v1alpha3),
+  // falling back to the v2 XTenant path when they're absent (v2 tenant System). So the card works across the
+  // cutover without a hardcoded kind/version.
+  const ann = entity.metadata.annotations ?? {};
+  const crGroup = ann['platform.refplat.org/cr-group'] ?? 'platform.refplat.org';
+  const crVersion = ann['platform.refplat.org/cr-version'] ?? 'v1alpha2';
+  const crPlural = ann['platform.refplat.org/cr-plural'] ?? 'xtenants';
+  const crName = ann['platform.refplat.org/cr-name'] ?? name;
 
   const [status, setStatus] = useState<TenantStatus | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -197,8 +205,8 @@ export const TenantStatusCard = () => {
     try {
       const res = await k8s.proxy({
         clusterName,
-        path: `/apis/platform.refplat.org/v1alpha2/xtenants/${encodeURIComponent(
-          name,
+        path: `/apis/${crGroup}/${crVersion}/${crPlural}/${encodeURIComponent(
+          crName,
         )}`,
       });
       if (res.status === 404) {
@@ -208,7 +216,7 @@ export const TenantStatusCard = () => {
       }
       if (!res.ok) {
         throw new Error(
-          `XTenant fetch failed: ${res.status} ${res.statusText}`,
+          `${crPlural} fetch failed: ${res.status} ${res.statusText}`,
         );
       }
       const xt = await res.json();
@@ -223,7 +231,7 @@ export const TenantStatusCard = () => {
     } finally {
       setLoading(false);
     }
-  }, [k8s, clusterName, name]);
+  }, [k8s, clusterName, crGroup, crVersion, crPlural, crName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -318,7 +326,9 @@ export const TenantStatusCard = () => {
       )}
 
       <Box className={classes.links}>
-        <Link to={`/catalog/default/system/${name}/kubernetes`}>
+        <Link
+          to={`/catalog/default/${entity.kind.toLowerCase()}/${name}/kubernetes`}
+        >
           Kubernetes
         </Link>
         {sourceUrl && (
