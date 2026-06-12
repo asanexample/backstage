@@ -4,6 +4,7 @@ import {
 } from '@backstage/backend-plugin-api';
 import { catalogProcessingExtensionPoint } from '@backstage/plugin-catalog-node';
 import { PlatformProjectionProvider } from './provider';
+import { EnvironmentRelationProcessor } from './environmentRelationProcessor';
 
 /**
  * Catalog backend module: registers the platform projection entity provider, which reads the platform repo's
@@ -45,6 +46,10 @@ export const catalogModulePlatformProjection = createBackendModule({
         });
 
         catalog.addEntityProvider(provider);
+
+        // Wire ownership/containment relations for the v3 custom kind:Environment (BuiltinKindsEntityProcessor
+        // doesn't, for unknown kinds). Harmless in v2 mode (no Environment entities exist).
+        catalog.addProcessor(new EnvironmentRelationProcessor());
 
         // Refresh cadence: the tenant entity (and its provisioning-status cards) should appear within minutes
         // of a claim merging, not the old 30 — #284 visibility. Reading the git tree every few minutes is well
