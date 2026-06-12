@@ -33,8 +33,15 @@ export const catalogModulePlatformProjection = createBackendModule({
           claimsPath:
             sub?.getOptionalString('claimsPath') ?? 'gitops/tenant-claims',
           teamsPath: sub?.getOptionalString('teamsPath') ?? 'gitops/teams',
+          productsPath:
+            sub?.getOptionalString('productsPath') ?? 'gitops/products',
+          environmentsPath:
+            sub?.getOptionalString('environmentsPath') ?? 'gitops/environments',
           branch: sub?.getOptionalString('branch') ?? 'main',
           ecrRegistry: sub?.getOptionalString('ecrRegistry'),
+          // ADR-067: 'v2' (default) projects XTenant claims; 'v3' projects Products + Environments. The
+          // cutover flips this to 'v3'. Additive — the default keeps the live catalog unchanged.
+          mode: sub?.getOptionalString('mode') === 'v3' ? 'v3' : 'v2',
         });
 
         catalog.addEntityProvider(provider);
