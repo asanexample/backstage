@@ -253,7 +253,7 @@ const product = (
   spec: any = {},
 ): ParsedProduct => ({
   product: {
-    apiVersion: 'platform.refplat.org/v1alpha3',
+    apiVersion: 'platform.refplat.org/v1beta1',
     kind: 'Product',
     metadata: { name: `${tm}-${short}` },
     spec: { team: tm, repo: `asanexample/${tm}-${short}`, ...spec },
@@ -263,7 +263,7 @@ const product = (
 
 const environment = (envName: string, spec: any): ParsedEnvironment => ({
   env: {
-    apiVersion: 'platform.refplat.org/v1alpha3',
+    apiVersion: 'platform.refplat.org/v1beta1',
     kind: 'XEnvironment',
     metadata: { name: envName },
     spec,
@@ -273,7 +273,7 @@ const environment = (envName: string, spec: any): ParsedEnvironment => ({
 
 const v3team = (teamName: string, spec: any = {}): ParsedTeam => ({
   team: {
-    apiVersion: 'platform.refplat.org/v1alpha3',
+    apiVersion: 'platform.refplat.org/v1beta1',
     kind: 'Team',
     metadata: { name: teamName },
     spec,
@@ -338,10 +338,10 @@ describe('buildV3Entities', () => {
       tier: 'standard',
       lifecyclePhase: 'active',
     });
-    // namespace-pinned + the live-status CR pointer (xenvironments v1alpha3) for the #285 card.
+    // namespace-pinned + the live-status CR pointer (xenvironments v1beta1) for the #285 card.
     expect(e.metadata.annotations?.['backstage.io/kubernetes-namespace']).toBe('alpha-demo-dev');
     expect(e.metadata.annotations?.['platform.refplat.org/cr-plural']).toBe('xenvironments');
-    expect(e.metadata.annotations?.['platform.refplat.org/cr-version']).toBe('v1alpha3');
+    expect(e.metadata.annotations?.['platform.refplat.org/cr-version']).toBe('v1beta1');
     expect(e.metadata.annotations?.['platform.refplat.org/cr-name']).toBe('demo-dev');
   });
 
@@ -385,7 +385,7 @@ describe('buildV3Entities', () => {
     expect(e.spec?.lifecyclePhase).toBe('decommissioning');
   });
 
-  it('emits a Group per team enriched with the envelope (v1alpha3 allowedStages) + product count', () => {
+  it('emits a Group per team enriched with the envelope (v1beta1 allowedStages) + product count', () => {
     const es = buildV3Entities(
       [demo, product('alpha', 'shop', { tenancy: 'per-customer' })],
       [demoDev],
