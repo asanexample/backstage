@@ -8,6 +8,10 @@ name: Build image
 on:
   push:
     branches: [main]
+  # Manual re-push: a platform teardown force-deletes ECR, so the pinned image must be re-pushed at the SAME
+  # commit SHA during the rebuild. Dispatching on main (HEAD = the pinned commit) re-pushes :<github.sha>
+  # identically — no dummy commit, no mid-rebuild re-pin. See docs/runbooks/platform-rebuild-from-scratch.md.
+  workflow_dispatch:
 
 permissions:
   id-token: write # OIDC: AWS (ECR push) + cosign keyless signing
