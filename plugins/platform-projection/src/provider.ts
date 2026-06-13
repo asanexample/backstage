@@ -312,7 +312,7 @@ export function buildEntities(
 // registry (gitops/teams + gitops/products + gitops/environments). Selected by `mode: 'v3'` (additive).
 // ===========================================================================================================
 
-/** Product registry entry (platform.refplat.org/v1alpha3) — gitops/products/<team>/<product>.yaml. */
+/** Product registry entry (platform.refplat.org/v1beta1) — gitops/products/<team>/<product>.yaml. */
 export type ProductReg = {
   apiVersion?: string;
   kind?: string;
@@ -328,7 +328,7 @@ export type ProductReg = {
 };
 export type ParsedProduct = { product: ProductReg; locationUrl: string };
 
-/** XEnvironment claim (platform.refplat.org/v1alpha3) — gitops/environments/<team>/<product>/<stage>.yaml. */
+/** XEnvironment claim (platform.refplat.org/v1beta1) — gitops/environments/<team>/<product>/<stage>.yaml. */
 export type XEnvironmentClaim = {
   apiVersion?: string;
   kind?: string;
@@ -377,7 +377,7 @@ export function nsFor(
  * annotations + the live-status CR pointer + lifecycle), `spec.system` = its Product (cross-stage grouping),
  * owner group:team. Per-Service Resources mirror the Composition (product-scoped ECR, Pod role, policies).
  * Team → `Group` (envelope-enriched; product count). Envelope tolerates v1alpha2 `allowedEnvironments` +
- * v1alpha3 `allowedStages` across the cutover boundary.
+ * v1beta1 `allowedStages` across the cutover boundary.
  */
 export function buildV3Entities(
   products: ParsedProduct[],
@@ -477,7 +477,7 @@ export function buildV3Entities(
           // Live-status pointer for the #285 card — projection-driven (apiVersion/plural/name), not hardcoded
           // to xtenant. The card reads the projected XEnvironment CR by this path.
           'platform.refplat.org/cr-group': 'platform.refplat.org',
-          'platform.refplat.org/cr-version': 'v1alpha3',
+          'platform.refplat.org/cr-version': 'v1beta1',
           'platform.refplat.org/cr-plural': 'xenvironments',
           'platform.refplat.org/cr-name': env.metadata?.name ?? ns,
           // ArgoCD: this environment's Application.
