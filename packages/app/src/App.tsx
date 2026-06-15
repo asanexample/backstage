@@ -21,6 +21,9 @@ import { tenantStatusModule } from './modules/tenant-status';
 // Team Tenants card: on a team's Group page, lists the tenants it owns (env/tier/lifecycle, linking to each
 // tenant System). Makes the team→tenant relationship navigable in one readable table.
 import { teamTenantsModule } from './modules/team-tenants';
+// ProductPicker scaffolder field: makes the New Environment form's Product input a Team-scoped dropdown
+// (auto-populated from the catalog's Systems owned by the selected Team) instead of a free-text field.
+import { productPickerModule } from './modules/product-picker';
 
 export default createApp({
   features: [
@@ -32,5 +35,6 @@ export default createApp({
     authModule,
     tenantStatusModule,
     teamTenantsModule,
+    productPickerModule,
   ],
 });
