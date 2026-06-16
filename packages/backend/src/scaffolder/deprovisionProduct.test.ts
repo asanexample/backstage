@@ -143,7 +143,7 @@ describe('platform:deprovision-product', () => {
     expect(tree.every((t: any) => t.sha === null)).toBe(true);
     expect(calls.createRef[0].ref).toBe('refs/heads/product/purge-alpha-shop');
     expect(calls.pullsCreate[0].head).toBe('product/purge-alpha-shop');
-    expect(calls.reposUpdate[0]).toMatchObject({ repo: 'app-alpha-shop', archived: true });
+    expect(calls.reposUpdate[0]).toMatchObject({ repo: 'alpha-shop', archived: true });
     expect(out.remoteUrl).toContain('/pull/1');
   });
 
@@ -188,7 +188,7 @@ describe('platform:deprovision-product', () => {
       confirm: 'alpha-shop',
       repoAction: 'delete',
     });
-    expect(calls.reposDelete[0]).toMatchObject({ repo: 'app-alpha-shop' });
+    expect(calls.reposDelete[0]).toMatchObject({ repo: 'alpha-shop' });
     expect(calls.reposUpdate).toHaveLength(0);
   });
 
@@ -203,7 +203,7 @@ describe('platform:deprovision-product', () => {
       mode: 'purge',
       confirm: 'alpha-shop',
     });
-    expect(calls.reposUpdate[0]).toMatchObject({ repo: 'app-alpha-shop', archived: true });
+    expect(calls.reposUpdate[0]).toMatchObject({ repo: 'alpha-shop', archived: true });
     expect(calls.reposDelete).toHaveLength(0);
   });
 
