@@ -23,6 +23,8 @@ backend.add(
 backend.add(import('./scaffolder/verifyTeamMembershipModule'));
 // platform:set-lifecycle-phase — deprovisioning edit step for the Deprovision Tenant template (#283)
 backend.add(import('./scaffolder/setLifecyclePhaseModule'));
+// platform:resolve-release-digest — digest-resolution step for the Request Promotion template (#377 Phase 3b)
+backend.add(import('./scaffolder/resolveReleaseDigestModule'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
