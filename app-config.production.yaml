@@ -142,8 +142,16 @@ catalog:
         catalogPath: /catalog-info.yaml
         filters:
           branch: main
-          # Scope discovery to our repos even if the App is later installed more broadly.
-          repository: '^(app-alpha|app-bravo|backstage)$'
+          # Discover app-repo service Components by convention. App repos are <team>-<product> (ADR-072), created
+          # on demand, so a static allowlist can't enumerate them — exclude the infra repos instead and discover
+          # the rest. Safe by construction: catalogPath requires a catalog-info.yaml, and our catalog rules
+          # restrict github (url) discovery to Components-only, so an app repo can't forge a Group/System/User
+          # (those come from the platform-projection plugin). Projection emits System/Environment/Resource;
+          # discovery emits the Service Component — complementary, no entity-name overlap.
+          # NOTE: only effective once the read-only catalog GitHub App is installed on ALL repositories — it is
+          # currently "selected" scope (asanexample-backstage), so newly-scaffolded product repos stay invisible
+          # to discovery until that install is widened (org-admin action; see docs/runbooks/backstage-github-app.md).
+          repository: '^(?!platform$|trusted-ci$).+$'
         schedule:
           frequency: { minutes: 10 }
           timeout: { minutes: 3 }
