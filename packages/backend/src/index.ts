@@ -25,6 +25,9 @@ backend.add(import('./scaffolder/verifyTeamMembershipModule'));
 backend.add(import('./scaffolder/setLifecyclePhaseModule'));
 // platform:resolve-release-digest — digest-resolution step for the Request Promotion template (#377 Phase 3b)
 backend.add(import('./scaffolder/resolveReleaseDigestModule'));
+// platform:deprovision-product — Product-scoped teardown (decommission/reactivate all envs, or purge the
+// Product + its envs + releases) for the Deprovision Product template (ADR-062)
+backend.add(import('./scaffolder/deprovisionProductModule'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
