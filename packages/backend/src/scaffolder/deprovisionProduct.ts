@@ -263,7 +263,7 @@ export const createDeprovisionProductAction = (
             '\n',
           )}\n\nOn merge: registry-reconcile destroys the per-Product OIDC role / ApplicationSet / Kyverno policy; ArgoCD prunes the Environments (namespaces deleted). **ECR images are retained** (deletionPolicy: Orphan). **Irreversible** — requires an admin/maintainer approval (≠ author)${
           ' and, if a prod env is in the bundle, the release-approver'
-        }; never auto-merged. The app repo \`app-${team}-${product}\` will be ${repoFate}.\n\nRequested-by: ${
+        }; never auto-merged. The app repo \`${team}-${product}\` will be ${repoFate}.\n\nRequested-by: ${
           ctx.input.requestedBy ?? 'unknown'
         }`;
       }
@@ -313,7 +313,7 @@ export const createDeprovisionProductAction = (
       });
 
       if (mode === 'purge') {
-        const appRepo = `app-${team}-${product}`;
+        const appRepo = `${team}-${product}`;
         const repoAction = ctx.input.repoAction ?? 'archive';
         try {
           if (repoAction === 'delete') {
