@@ -11,7 +11,7 @@
  *     its Release records together (the gate's completeness guard permits a single Product+decommissioned-envs
  *     teardown). Branch product/purge-<team>-<product> — the sanctioned purge branch the gate recognises. The
  *     PR is never auto-merged; an admin (+ the release-approver if a prod env is in the bundle) approves it.
- *     On a successful PR open the app repo is archived (reversible; default on).
+ *     On a successful PR open the app repo is disposed of per `repoAction` (delete | archive | keep; default archive).
  *
  * All GitHub work is done directly via Octokit: the additive publish:github:pull-request action cannot express
  * file deletions, and we must enumerate the Product's Environments/Releases server-side. Confirmation and the
@@ -69,7 +69,7 @@ export const createDeprovisionProductAction = (
   createTemplateAction({
     id: 'platform:deprovision-product',
     description:
-      'Deprovisions a Product and ALL its Environments via one PR: decommission/reactivate (reversible phase edit across every env) or purge (delete the Product + its envs + releases; archives the app repo). Opens the PR via Octokit (deletions/enumeration the additive publish action cannot do).',
+      'Deprovisions a Product and ALL its Environments via one PR: decommission/reactivate (reversible phase edit across every env) or purge (delete the Product + its envs + releases; the app repo is deleted/archived/kept per repoAction). Opens the PR via Octokit (deletions/enumeration the additive publish action cannot do).',
     schema: {
       input: {
         team: z =>
@@ -98,10 +98,12 @@ export const createDeprovisionProductAction = (
             .optional(),
         base: z =>
           z.string().describe('Base branch (default main).').optional(),
-        archiveRepo: z =>
+        repoAction: z =>
           z
-            .boolean()
-            .describe('Archive the app repo on purge (default true).')
+            .enum(['delete', 'archive', 'keep'])
+            .describe(
+              "On purge, what to do with the app repo: 'delete' (permanent), 'archive' (reversible, read-only), or 'keep' (leave active). Default 'archive'.",
+            )
             .optional(),
         timestamp: z =>
           z
@@ -250,13 +252,18 @@ export const createDeprovisionProductAction = (
         }));
         branch = `product/purge-${team}-${product}`;
         title = `chore(products): purge ${team}-${product}`;
+        const repoFate = {
+          delete: '**deleted** (permanent)',
+          archive: '**archived** (reversible)',
+          keep: 'left active',
+        }[ctx.input.repoAction ?? 'archive'];
         body = `**Purge** Product \`${team}/${product}\` and ALL its Environments + Releases (ADR-062). Removes:\n${toDelete
           .map(p => `- \`${p}\``)
           .join(
             '\n',
           )}\n\nOn merge: registry-reconcile destroys the per-Product OIDC role / ApplicationSet / Kyverno policy; ArgoCD prunes the Environments (namespaces deleted). **ECR images are retained** (deletionPolicy: Orphan). **Irreversible** — requires an admin/maintainer approval (≠ author)${
           ' and, if a prod env is in the bundle, the release-approver'
-        }; never auto-merged. The app repo \`app-${team}-${product}\` is archived (reversible).\n\nRequested-by: ${
+        }; never auto-merged. The app repo \`app-${team}-${product}\` will be ${repoFate}.\n\nRequested-by: ${
           ctx.input.requestedBy ?? 'unknown'
         }`;
       }
@@ -305,14 +312,22 @@ export const createDeprovisionProductAction = (
         body,
       });
 
-      if (mode === 'purge' && ctx.input.archiveRepo !== false) {
+      if (mode === 'purge') {
         const appRepo = `app-${team}-${product}`;
+        const repoAction = ctx.input.repoAction ?? 'archive';
         try {
-          await octokit.repos.update({ owner, repo: appRepo, archived: true });
-          ctx.logger.info(`archived ${owner}/${appRepo}`);
+          if (repoAction === 'delete') {
+            await octokit.repos.delete({ owner, repo: appRepo });
+            ctx.logger.info(`deleted ${owner}/${appRepo}`);
+          } else if (repoAction === 'archive') {
+            await octokit.repos.update({ owner, repo: appRepo, archived: true });
+            ctx.logger.info(`archived ${owner}/${appRepo}`);
+          } else {
+            ctx.logger.info(`kept ${owner}/${appRepo} active (repoAction=keep)`);
+          }
         } catch (e: any) {
           ctx.logger.warn(
-            `could not archive ${owner}/${appRepo} (${e.status ?? e.message}) — archive it manually if desired (needs the App's Administration:write).`,
+            `could not ${repoAction} ${owner}/${appRepo} (${e.status ?? e.message}) — do it manually if desired (needs the App's Administration:write).`,
           );
         }
       }

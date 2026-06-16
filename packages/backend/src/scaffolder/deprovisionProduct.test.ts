@@ -31,6 +31,7 @@ const makeOctokit = (dirs: Dir, files: Files) => {
     createRef: [],
     pullsCreate: [],
     reposUpdate: [],
+    reposDelete: [],
   };
   const octokit: any = {
     repos: {
@@ -53,6 +54,10 @@ const makeOctokit = (dirs: Dir, files: Files) => {
       }),
       update: jest.fn(async (a: any) => {
         calls.reposUpdate.push(a);
+        return { data: {} };
+      }),
+      delete: jest.fn(async (a: any) => {
+        calls.reposDelete.push(a);
         return { data: {} };
       }),
     },
@@ -155,7 +160,7 @@ describe('platform:deprovision-product', () => {
     ).rejects.toThrow(/still active/);
   });
 
-  it('purge: archiveRepo:false skips the archive', async () => {
+  it('purge: repoAction=keep leaves the repo (no archive, no delete)', async () => {
     const { octokit, calls } = makeOctokit(
       { 'gitops/environments/alpha/shop': ['dev.yaml'] },
       { 'gitops/environments/alpha/shop/dev.yaml': envClaim('alpha', 'shop', 'dev', 'decommissioning') },
@@ -165,9 +170,41 @@ describe('platform:deprovision-product', () => {
       product: 'shop',
       mode: 'purge',
       confirm: 'alpha-shop',
-      archiveRepo: false,
+      repoAction: 'keep',
     });
     expect(calls.reposUpdate).toHaveLength(0);
+    expect(calls.reposDelete).toHaveLength(0);
+  });
+
+  it('purge: repoAction=delete hard-deletes the app repo (no archive)', async () => {
+    const { octokit, calls } = makeOctokit(
+      { 'gitops/environments/alpha/shop': ['dev.yaml'] },
+      { 'gitops/environments/alpha/shop/dev.yaml': envClaim('alpha', 'shop', 'dev', 'decommissioning') },
+    );
+    await run(makeAction(octokit), {
+      team: 'alpha',
+      product: 'shop',
+      mode: 'purge',
+      confirm: 'alpha-shop',
+      repoAction: 'delete',
+    });
+    expect(calls.reposDelete[0]).toMatchObject({ repo: 'app-alpha-shop' });
+    expect(calls.reposUpdate).toHaveLength(0);
+  });
+
+  it('purge: default (no repoAction) archives the app repo', async () => {
+    const { octokit, calls } = makeOctokit(
+      { 'gitops/environments/alpha/shop': ['dev.yaml'] },
+      { 'gitops/environments/alpha/shop/dev.yaml': envClaim('alpha', 'shop', 'dev', 'decommissioning') },
+    );
+    await run(makeAction(octokit), {
+      team: 'alpha',
+      product: 'shop',
+      mode: 'purge',
+      confirm: 'alpha-shop',
+    });
+    expect(calls.reposUpdate[0]).toMatchObject({ repo: 'app-alpha-shop', archived: true });
+    expect(calls.reposDelete).toHaveLength(0);
   });
 
   it('decommission: sets phase=decommissioning on every env in one commit', async () => {
