@@ -357,6 +357,48 @@ describe('buildV3Entities', () => {
     expect(res.some(r => r.metadata.title === 'restrict-images-alpha-demo-dev')).toBe(true);
   });
 
+  it('projects a self-service cloud resource (ADR-073) as a Resource depending on its Service', () => {
+    const shop = product('alpha', 'shop', { tenancy: 'pooled' });
+    const env = environment('shop-dev', {
+      team: 'alpha',
+      product: 'shop',
+      stage: 'dev',
+      services: {
+        web: {
+          serviceAccount: 'app-alpha',
+          resources: {
+            uploads: { kind: 'objectstore', engine: 's3', access: 'readwrite' },
+          },
+        },
+      },
+    });
+    const res = v3(buildV3Entities([shop], [env], []), 'Resource');
+    const bucket = res.find(r => r.metadata.name === 's3-alpha-shop-dev-web-uploads');
+    expect(bucket).toBeDefined();
+    // engine→type, contained by the Product System, owned by the team, and a dependency of the Service Component.
+    expect(bucket!.spec).toMatchObject({
+      type: 's3-bucket',
+      owner: 'group:alpha',
+      system: 'alpha-shop',
+      dependencyOf: ['component:default/alpha-shop-web'],
+    });
+    expect(bucket!.metadata.title).toBe('uploads · s3 (readwrite)');
+    expect(bucket!.metadata.annotations?.['platform.refplat.org/resource-engine']).toBe('s3');
+    expect(bucket!.metadata.annotations?.['platform.refplat.org/resource-access']).toBe('readwrite');
+    expect(bucket!.metadata.annotations?.['platform.refplat.org/resource-kind']).toBe('objectstore');
+    // unknown engines still project (generic type) so a new engine is visible before RESOURCE_TYPE is updated.
+    const env2 = environment('shop-test', {
+      team: 'alpha',
+      product: 'shop',
+      stage: 'test',
+      services: { web: { resources: { events: { kind: 'stream', engine: 'kinesis' } } } },
+    });
+    const r2 = v3(buildV3Entities([shop], [env2], []), 'Resource').find(
+      r => r.metadata.name === 'kinesis-alpha-shop-test-web-events',
+    );
+    expect(r2?.spec?.type).toBe('cloud-resource');
+  });
+
   it('places a per-customer prod env in the customer-suffixed namespace', () => {
     const shop = product('alpha', 'shop', { tenancy: 'per-customer' });
     const env = environment('shop-acme-prod', {
