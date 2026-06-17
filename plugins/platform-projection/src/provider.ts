@@ -89,6 +89,18 @@ function annotations(locationUrl: string): Record<string, string> {
 }
 
 /**
+ * Self-service cloud-resource engine → catalog Resource `spec.type` (ADR-073). Engine-neutral: each new engine
+ * adds one entry and is projected automatically. Unknown engines fall back to a generic type so a new engine is
+ * still visible before this map is updated.
+ */
+const RESOURCE_TYPE: Record<string, string> = {
+  s3: 's3-bucket',
+  sqs: 'sqs-queue',
+  sns: 'sns-topic',
+  dynamodb: 'dynamodb-table',
+};
+
+/**
  * Pure, deterministic mapping from Team CRs + XTenant claims to catalog entities (unit-tested).
  *
  * Per Team CR → a Group (every team, even with no tenants yet — so a freshly-onboarded team is immediately
@@ -346,6 +358,11 @@ export type XEnvironmentClaim = {
         serviceAccount?: string;
         image?: string;
         permissions?: { aws?: { policyStatements?: unknown[] } };
+        /** Self-service cloud resources (ADR-073): cloud-neutral declarations the Composition realizes. */
+        resources?: Record<
+          string,
+          { kind?: string; engine?: string; access?: string }
+        >;
       }
     >;
     lifecycle?: { phase?: 'active' | 'suspended' | 'decommissioning' };
@@ -504,8 +521,15 @@ export function buildV3Entities(
       },
     });
 
-    // Per-Service Resources (mirror the v3 Composition): product-scoped ECR + per-service Pod role.
-    const resources: Array<{ name: string; type: string; title: string }> = [
+    // Per-Service Resources (mirror the v3 Composition): product-scoped ECR + per-service Pod role +
+    // self-service cloud resources (ADR-073). `annotations`/`dependencyOf` are optional enrichments.
+    const resources: Array<{
+      name: string;
+      type: string;
+      title: string;
+      annotations?: Record<string, string>;
+      dependencyOf?: string[];
+    }> = [
       { name: `ns-${ns}`, type: 'kubernetes-namespace', title: `${ns} (namespace)` },
       { name: `quota-${ns}`, type: 'resource-quota', title: `${ns} ResourceQuota` },
     ];
@@ -521,6 +545,28 @@ export function buildV3Entities(
           name: `iam-pod-${ns}-${svc}`,
           type: 'iam-role',
           title: `Pod-${team}-${product}-${stage}-${svc} (IAM role)`,
+        });
+      }
+      // Self-service cloud resources (ADR-073): one catalog Resource per declared `resources.<name>`,
+      // linked as a dependency of the owning Service Component (<team>-<product>-<svc>). Read-only view of
+      // the DECLARED intent (engine/access) — the provisioned name carries a hash and is added with the
+      // live-status work (A.2). Cloud-neutral, so SQS/SNS/Dynamo project the same way as they land.
+      for (const [resName, rcfg] of Object.entries(cfg?.resources ?? {})) {
+        const engine = (rcfg?.engine ?? 'unknown').toLowerCase();
+        const access = rcfg?.access ?? 'read';
+        resources.push({
+          name: `${engine}-${ns}-${svc}-${resName}`,
+          type: RESOURCE_TYPE[engine] ?? 'cloud-resource',
+          title: `${resName} · ${engine} (${access})`,
+          annotations: {
+            'platform.refplat.org/resource-name': resName,
+            'platform.refplat.org/resource-engine': engine,
+            'platform.refplat.org/resource-access': access,
+            ...(rcfg?.kind
+              ? { 'platform.refplat.org/resource-kind': rcfg.kind }
+              : {}),
+          },
+          dependencyOf: [`component:default/${team}-${product}-${svc}`],
         });
       }
     }
@@ -545,9 +591,14 @@ export function buildV3Entities(
           name: r.name,
           title: r.title,
           description: `${r.type} for ${ns}`,
-          annotations: annotations(locationUrl),
+          annotations: { ...annotations(locationUrl), ...(r.annotations ?? {}) },
         },
-        spec: { type: r.type, owner: `group:${team}`, system: sysName },
+        spec: {
+          type: r.type,
+          owner: `group:${team}`,
+          system: sysName,
+          ...(r.dependencyOf ? { dependencyOf: r.dependencyOf } : {}),
+        },
       });
     }
   }
