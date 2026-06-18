@@ -28,6 +28,9 @@ backend.add(import('./scaffolder/resolveReleaseDigestModule'));
 // platform:deprovision-product — Product-scoped teardown (decommission/reactivate all envs, or purge the
 // Product + its envs + releases) for the Deprovision Product template (ADR-062)
 backend.add(import('./scaffolder/deprovisionProductModule'));
+// platform:add-service-resource — declare a self-service cloud resource on a Service's Environment claim,
+// for the New Resource template (#553, ADR-073)
+backend.add(import('./scaffolder/addServiceResourceModule'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
