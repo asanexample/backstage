@@ -11,6 +11,7 @@ import { SidebarLogo } from './SidebarLogo';
 import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import GroupIcon from '@material-ui/icons/Group';
+import LinkIcon from '@material-ui/icons/Link';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
@@ -62,6 +63,13 @@ export const SidebarContent = NavContentBlueprint.make({
           >
             {nav.take('page:app-visualizer')}
             {nav.take('page:user-settings')}
+            {/* Link GitHub + Slack to your platform identity (Keycloak Account Console) so the triage agent
+                can @mention you by name on incidents your change caused (ADR-084 Phase 1). External link. */}
+            <SidebarItem
+              icon={LinkIcon}
+              to="https://keycloak.aws.refplat.org/realms/platform/account"
+              text="Connect accounts"
+            />
             <SidebarSignOut />
           </SidebarGroup>
         </Sidebar>
