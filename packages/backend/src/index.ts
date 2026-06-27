@@ -31,6 +31,9 @@ backend.add(import('./scaffolder/deprovisionProductModule'));
 // platform:add-service-resource — declare a self-service cloud resource on a Service's Environment claim,
 // for the New Resource template (#553, ADR-073)
 backend.add(import('./scaffolder/addServiceResourceModule'));
+// platform:offboard-person — opens a PR deleting a Person from the roster, for the Offboard Person template
+// (identity strategy §2.5; the People Gate authorizes the deletion via an access-admin approval)
+backend.add(import('./scaffolder/offboardPersonModule'));
 
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
