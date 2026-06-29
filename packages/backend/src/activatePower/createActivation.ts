@@ -1,4 +1,4 @@
-import { type Reach } from './eligibility';
+import { type Reach, type PersonGrant } from './eligibility';
 
 /**
  * Builds + submits the `Activation` custom resource (ADR-088). The CR is created imperatively through the
@@ -73,7 +73,7 @@ export class AlreadyActiveError extends Error {}
 export async function getPersonGrants(
   deps: ProxyDeps,
   username: string,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<PersonGrant[]> {
   const path = `/apis/${GROUP}/v1beta1/people/${encodeURIComponent(username)}`;
   const res = await proxyRequest(deps, 'GET', path);
   if (res.status === 404) return [];
@@ -81,7 +81,7 @@ export async function getPersonGrants(
     throw new Error(`reading Person ${username}: ${res.status} ${await res.text()}`);
   }
   const body = JSON.parse(await res.text()) as {
-    spec?: { grants?: Array<Record<string, unknown>> };
+    spec?: { grants?: PersonGrant[] };
   };
   return body.spec?.grants ?? [];
 }

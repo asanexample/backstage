@@ -5,7 +5,11 @@ import {
 import { Router, json } from 'express';
 import { createRemoteJWKSet } from 'jose';
 import { verifyStepUp, StepUpError } from './verifyStepUp';
-import { isEligibleToBorrow, type Reach } from './eligibility';
+import {
+  isEligibleToBorrow,
+  borrowableGrants,
+  type Reach,
+} from './eligibility';
 import {
   buildActivationManifest,
   getPersonGrants,
@@ -69,8 +73,34 @@ export const activatePowerPlugin = createBackendPlugin({
         // Created once — caches the realm signing keys across requests.
         const jwks = createRemoteJWKSet(new URL(jwksUri));
 
+        // Reach the cluster as THIS backend's service identity (the kubernetes proxy authenticates to EKS
+        // via the pod's Pod Identity, independent of the calling user).
+        const makeProxy = async (): Promise<ProxyDeps> => {
+          const baseUrl = await discovery.getBaseUrl('kubernetes');
+          const { token } = await auth.getPluginRequestToken({
+            onBehalfOf: await auth.getOwnServiceCredentials(),
+            targetPluginId: 'kubernetes',
+          });
+          return {
+            baseUrl,
+            token,
+            clusterName,
+            fetch: globalThis.fetch as ProxyDeps['fetch'],
+          };
+        };
+
         const router = Router();
         router.use(json());
+
+        // What CAN the signed-in user borrow? (its on-demand grants) — populates the Activate Power page.
+        // Listing is not sensitive, so no step-up here; borrowing (POST /activate) is the gated action.
+        router.get('/eligible', async (req, res) => {
+          const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+          const info = await userInfo.getUserInfo(credentials);
+          const caller = usernameFromEntityRef(info.userEntityRef);
+          const grants = await getPersonGrants(await makeProxy(), caller);
+          res.json({ user: caller, roles: borrowableGrants(grants) });
+        });
 
         router.post('/activate', async (req, res) => {
           // 1. The calling Backstage user.
@@ -126,21 +156,11 @@ export const activatePowerPlugin = createBackendPlugin({
           }
 
           // 4. Reach the cluster as this backend's service identity.
-          const baseUrl = await discovery.getBaseUrl('kubernetes');
-          const { token } = await auth.getPluginRequestToken({
-            onBehalfOf: await auth.getOwnServiceCredentials(),
-            targetPluginId: 'kubernetes',
-          });
-          const proxy: ProxyDeps = {
-            baseUrl,
-            token,
-            clusterName,
-            fetch: globalThis.fetch as ProxyDeps['fetch'],
-          };
+          const proxy = await makeProxy();
 
           // 5. Front-door eligibility (the operator re-checks at mint).
           const grants = await getPersonGrants(proxy, caller);
-          if (!isEligibleToBorrow(grants as any, role, reach)) {
+          if (!isEligibleToBorrow(grants, role, reach)) {
             res.status(403).json({
               error: `you are not eligible to borrow "${role}" at this reach`,
             });
