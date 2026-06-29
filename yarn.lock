@@ -13504,8 +13504,11 @@ __metadata:
     "@internal/plugin-catalog-backend-module-platform-projection": "link:../../plugins/platform-projection"
     "@octokit/rest": "npm:^19.0.3"
     "@roadiehq/backstage-plugin-argo-cd-backend": "npm:^4.8.0"
+    "@types/express": "npm:^4.17.21"
     app: "link:../app"
     better-sqlite3: "npm:^12.0.0"
+    express: "npm:^4.21.2"
+    jose: "npm:^5.9.6"
     node-gyp: "npm:^10.0.0"
     pg: "npm:^8.11.3"
     yaml: "npm:^2.9.0"
@@ -17579,7 +17582,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"express@npm:^4.14.0, express@npm:^4.22.0, express@npm:^4.22.1":
+"express@npm:^4.14.0, express@npm:^4.21.2, express@npm:^4.22.0, express@npm:^4.22.1":
   version: 4.22.2
   resolution: "express@npm:4.22.2"
   dependencies:
@@ -21358,7 +21361,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"jose@npm:^5.0.0":
+"jose@npm:^5.0.0, jose@npm:^5.9.6":
   version: 5.10.0
   resolution: "jose@npm:5.10.0"
   checksum: 10c0/e20d9fc58d7e402f2e5f04e824b8897d5579aae60e64cb88ebdea1395311c24537bf4892f7de413fab1acf11e922797fb1b42269bc8fc65089a3749265ccb7b0

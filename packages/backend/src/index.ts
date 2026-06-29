@@ -35,6 +35,10 @@ backend.add(import('./scaffolder/addServiceResourceModule'));
 // (identity strategy §2.5; the People Gate authorizes the deletion via an access-admin approval)
 backend.add(import('./scaffolder/offboardPersonModule'));
 
+// activate-power — the temporary-power front door (ADR-088). Verifies a fresh passkey step-up and is the
+// SOLE creator of Activation CRs (cluster RBAC grants `create activations` to this backend's SA only).
+backend.add(import('./activatePower/plugin'));
+
 // techdocs plugin
 backend.add(import('@backstage/plugin-techdocs-backend'));
 

@@ -1,0 +1,98 @@
+import {
+  activationName,
+  buildActivationManifest,
+  getPersonGrants,
+  submitActivation,
+  AlreadyActiveError,
+  type FetchLike,
+  type ProxyDeps,
+} from './createActivation';
+
+describe('activationName', () => {
+  it('is deterministic and k8s-valid (principal-role-reach, lowercased)', () => {
+    expect(
+      activationName('josh', 'break-glass', { scope: 'platform' }),
+    ).toBe('josh-break-glass-platform');
+    expect(activationName('Alpha-Dev', 'developer', { team: 'alpha' })).toBe(
+      'alpha-dev-developer-alpha',
+    );
+  });
+});
+
+describe('buildActivationManifest', () => {
+  it('builds the Activation CR with principal == requestedBy and the step-up stamped', () => {
+    const m = buildActivationManifest({
+      principal: 'josh',
+      role: 'break-glass',
+      reach: { scope: 'platform' },
+      duration: '1h',
+      reason: 'prod incident',
+      stepUp: { authTime: '2026-06-29T20:00:00.000Z', acr: 'passkey' },
+    }) as any;
+    expect(m.apiVersion).toBe('platform.refplat.org/v1alpha1');
+    expect(m.kind).toBe('Activation');
+    expect(m.metadata.name).toBe('josh-break-glass-platform');
+    expect(m.spec).toMatchObject({
+      principal: 'josh',
+      requestedBy: 'josh',
+      role: 'break-glass',
+      reach: { scope: 'platform' },
+      duration: '1h',
+      reason: 'prod incident',
+      stepUp: { authTime: '2026-06-29T20:00:00.000Z', acr: 'passkey' },
+    });
+  });
+});
+
+function fakeProxy(
+  responder: (method: string, url: string, body?: string) => { status: number; body?: string },
+): ProxyDeps {
+  const fetch: FetchLike = async (url, init) => {
+    const { status, body = '' } = responder(init?.method ?? 'GET', url, init?.body);
+    return { status, ok: status >= 200 && status < 300, text: async () => body };
+  };
+  return { baseUrl: 'http://k8s', token: 't', clusterName: 'c', fetch };
+}
+
+describe('getPersonGrants', () => {
+  it('returns [] for a missing Person (404)', async () => {
+    const p = fakeProxy(() => ({ status: 404 }));
+    expect(await getPersonGrants(p, 'nobody')).toEqual([]);
+  });
+
+  it('returns the Person spec.grants', async () => {
+    const p = fakeProxy(() => ({
+      status: 200,
+      body: JSON.stringify({
+        spec: { grants: [{ role: 'break-glass', scope: 'platform', activation: 'on-demand' }] },
+      }),
+    }));
+    expect(await getPersonGrants(p, 'josh')).toEqual([
+      { role: 'break-glass', scope: 'platform', activation: 'on-demand' },
+    ]);
+  });
+});
+
+describe('submitActivation', () => {
+  it('POSTs the manifest and returns the created name', async () => {
+    let seen: { method: string; url: string; body?: string } | undefined;
+    const p = fakeProxy((method, url, body) => {
+      seen = { method, url, body };
+      return { status: 201, body: JSON.stringify({ metadata: { name: 'josh-break-glass-platform' } }) };
+    });
+    const out = await submitActivation(p, { metadata: { name: 'x' } });
+    expect(out.name).toBe('josh-break-glass-platform');
+    expect(seen?.method).toBe('POST');
+    expect(seen?.url).toContain('/proxy/apis/platform.refplat.org/v1alpha1/activations');
+  });
+
+  it('maps a 409 to AlreadyActiveError', async () => {
+    const p = fakeProxy(() => ({ status: 409, body: '{"reason":"AlreadyExists"}' }));
+    await expect(submitActivation(p, {})).rejects.toThrow(AlreadyActiveError);
+  });
+
+  it('throws on other failures', async () => {
+    const p = fakeProxy(() => ({ status: 403, body: 'forbidden' }));
+    await expect(submitActivation(p, {})).rejects.toThrow(/403/);
+  });
+});
