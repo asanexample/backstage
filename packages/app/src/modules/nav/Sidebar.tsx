@@ -12,6 +12,7 @@ import MenuIcon from '@material-ui/icons/Menu';
 import SearchIcon from '@material-ui/icons/Search';
 import GroupIcon from '@material-ui/icons/Group';
 import LinkIcon from '@material-ui/icons/Link';
+import LockOpenIcon from '@material-ui/icons/LockOpen';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
@@ -29,6 +30,10 @@ export const SidebarContent = NavContentBlueprint.make({
       // Kubernetes is an entity tab (per-Component), not a standalone page — the global page has no entity
       // context and errors. Consume its auto-derived nav item so it isn't rendered in the sidebar.
       nav.take('page:kubernetes');
+      // The Activate Power OIDC callback is a popup target, not a user page — consume its nav item. The
+      // Activate Power page itself is placed explicitly in the Menu group below.
+      nav.take('page:activate-power-callback');
+      nav.take('page:activate-power');
 
       return (
         <Sidebar>
@@ -47,6 +52,13 @@ export const SidebarContent = NavContentBlueprint.make({
               text="Teams"
             />
             {nav.take('page:scaffolder')}
+            {/* Activate Power (ADR-088): borrow a privileged role for a bounded window, gated by a fresh
+                passkey step-up. */}
+            <SidebarItem
+              icon={LockOpenIcon}
+              to="/activate-power"
+              text="Activate Power"
+            />
             <SidebarDivider />
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}
