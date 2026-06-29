@@ -25,4 +25,27 @@ export interface Config {
      */
     clusterName?: string;
   };
+  /**
+   * Activate Power frontend (ADR-088) — the step-up popup ceremony. Read in the browser, so these are
+   * non-secret OIDC public-client parameters. (The backend's own activatePower.* config — clusterName,
+   * issuer, audience — lives in the backend package's schema.)
+   */
+  activatePower?: {
+    /**
+     * Keycloak realm issuer (the OIDC authority) the step-up popup re-authenticates against.
+     * @visibility frontend
+     */
+    authority?: string;
+    /**
+     * The public step-up client id (no secret — it runs in the browser).
+     * @visibility frontend
+     */
+    clientId?: string;
+    /**
+     * Optional requested assurance level (acr_values), e.g. "gold". Omit to rely on max_age=0 freshness alone
+     * (the realm's only second factor is the passkey, so a fresh re-auth is already a fresh passkey).
+     * @visibility frontend
+     */
+    acrValues?: string;
+  };
 }

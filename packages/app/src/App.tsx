@@ -24,6 +24,10 @@ import { teamTenantsModule } from './modules/team-tenants';
 // ProductPicker scaffolder field: makes the New Environment form's Product input a Team-scoped dropdown
 // (auto-populated from the catalog's Systems owned by the selected Team) instead of a free-text field.
 import { productPickerModule } from './modules/product-picker';
+// Activate Power (ADR-088): the temporary-power front door — borrow a privileged role for a bounded window,
+// gated by a fresh passkey step-up. The backend (the sole Activation creator) verifies the step-up and the
+// operator mints/expires the borrow.
+import { activatePowerModule } from './modules/activate-power';
 
 export default createApp({
   features: [
@@ -36,5 +40,6 @@ export default createApp({
     tenantStatusModule,
     teamTenantsModule,
     productPickerModule,
+    activatePowerModule,
   ],
 });

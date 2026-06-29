@@ -65,6 +65,19 @@ auth:
 signOut:
   keycloakLogoutUrl: https://keycloak.aws.refplat.org/realms/platform/protocol/openid-connect/logout
 
+# Activate Power (ADR-088) — the temporary-power front door. The frontend (authority/clientId) runs the
+# step-up passkey popup; the backend (clusterName/issuer/audience) verifies the fresh assertion and creates
+# the Activation CR on the hub. `requiredAcr` is intentionally unset — max_age=0 already forces a fresh
+# passkey (the realm's only second factor), so freshness is the proof.
+activatePower:
+  # backend (/activate + /eligible)
+  clusterName: platform-use1-eks # the hub — where the Activation CRD + the operator live
+  issuer: https://keycloak.aws.refplat.org/realms/platform
+  audience: activate-power
+  # frontend (the step-up popup)
+  authority: https://keycloak.aws.refplat.org/realms/platform
+  clientId: activate-power
+
 integrations:
   github:
     # Two GitHub Apps; Backstage picks per request. ORDER IS LOAD-BEARING: org-level (repo-less) credential
