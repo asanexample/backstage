@@ -2,6 +2,7 @@ import {
   createBackendPlugin,
   coreServices,
 } from '@backstage/backend-plugin-api';
+import { randomUUID } from 'node:crypto';
 import { Router, json } from 'express';
 import { createRemoteJWKSet } from 'jose';
 import { verifyStepUp, StepUpError } from './verifyStepUp';
@@ -17,6 +18,7 @@ import {
   listActivations,
   getActivation,
   deleteActivation,
+  requestExtend,
   AlreadyActiveError,
   type ProxyDeps,
 } from './createActivation';
@@ -270,6 +272,68 @@ export const activatePowerPlugin = createBackendPlugin({
           await deleteActivation(proxy, name);
           logger.info(`revoke: ${caller} revoked activation ${name}`);
           res.status(202).json({ name, revoked: true });
+        });
+
+        // Extend a live borrow — a fresh passkey re-proves you, and the operator pushes the expiry out
+        // (capped at the role's ceiling). Only your OWN borrow, and the step-up must be yours.
+        router.post('/activations/:name/extend', async (req, res) => {
+          const caller = await resolveCaller(req);
+          const name = req.params.name;
+          const stepUpToken =
+            typeof req.body?.stepUpToken === 'string'
+              ? req.body.stepUpToken
+              : '';
+          if (!stepUpToken) {
+            res.status(400).json({ error: 'stepUpToken is required' });
+            return;
+          }
+          // Verify the FRESH passkey step-up (same bar as borrowing).
+          let verified;
+          try {
+            verified = await verifyStepUp(stepUpToken, jwks, {
+              issuer,
+              audience,
+              requiredAcr,
+              maxAuthAgeSeconds,
+            });
+          } catch (e) {
+            if (e instanceof StepUpError) {
+              res.status(401).json({ error: e.message });
+              return;
+            }
+            throw e;
+          }
+          if (verified.username !== caller) {
+            res.status(403).json({
+              error: 'the step-up assertion does not match the signed-in user',
+            });
+            return;
+          }
+          const proxy = await makeProxy();
+          const activation = await getActivation(proxy, name);
+          if (!activation) {
+            res.status(404).json({ error: 'no such activation' });
+            return;
+          }
+          if (activation.principal !== caller) {
+            res
+              .status(403)
+              .json({ error: 'you can only extend your own borrows' });
+            return;
+          }
+          const extended = await requestExtend(proxy, name, {
+            nonce: randomUUID(),
+            authTime: new Date(verified.authTime * 1000).toISOString(),
+            acr: verified.acr,
+          });
+          if (!extended) {
+            res.status(404).json({ error: 'no such activation' });
+            return;
+          }
+          logger.info(
+            `extend: ${caller} requested an extension of ${name} — step-up verified`,
+          );
+          res.status(202).json({ name, extended: true });
         });
 
         http.use(router);

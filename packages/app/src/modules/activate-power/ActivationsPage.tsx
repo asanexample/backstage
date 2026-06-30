@@ -14,16 +14,19 @@ import {
 } from '@backstage/core-components';
 import {
   useApi,
+  configApiRef,
   fetchApiRef,
   discoveryApiRef,
 } from '@backstage/core-plugin-api';
 import {
+  Box,
   Button,
   Chip,
   FormControlLabel,
   Switch,
   Tooltip,
 } from '@material-ui/core';
+import { stepUp } from './stepUp';
 
 type Reach = { scope?: string; team?: string };
 type Activation = {
@@ -74,6 +77,7 @@ const timeLeft = (expiresAt?: string, now = Date.now()): string => {
 };
 
 export const ActivationsPage = () => {
+  const config = useApi(configApiRef);
   const fetchApi = useApi(fetchApiRef);
   const discovery = useApi(discoveryApiRef);
 
@@ -135,6 +139,36 @@ export const ActivationsPage = () => {
     }
   };
 
+  // Extend re-proves identity with a fresh passkey, then asks the operator to push the expiry out
+  // (capped at the role's ceiling). Your own Active borrows only.
+  const extend = async (a: Activation) => {
+    setBusy(a.name);
+    try {
+      const stepUpToken = await stepUp({
+        authority: config.getString('activatePower.authority'),
+        clientId: config.getString('activatePower.clientId'),
+        acrValues: config.getOptionalString('activatePower.acrValues'),
+      });
+      const res = await fetchApi.fetch(
+        `${await baseUrl()}/activations/${encodeURIComponent(a.name)}/extend`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stepUpToken }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `extend failed (${res.status})`);
+      }
+      await load();
+    } catch (e) {
+      setError(e as Error);
+    } finally {
+      setBusy(undefined);
+    }
+  };
+
   const columns: TableColumn<Activation>[] = [
     { title: 'Role', field: 'role' },
     {
@@ -155,15 +189,27 @@ export const ActivationsPage = () => {
     {
       title: '',
       render: a => (
-        <Button
-          size="small"
-          variant="outlined"
-          color="secondary"
-          disabled={!!busy}
-          onClick={() => revoke(a)}
-        >
-          {busy === a.name ? 'Revoking…' : 'Revoke'}
-        </Button>
+        <Box display="flex" gridGap={8} justifyContent="flex-end">
+          {a.principal === data?.user && a.phase === 'Active' && (
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!!busy}
+              onClick={() => extend(a)}
+            >
+              {busy === a.name ? 'Tap passkey…' : 'Extend'}
+            </Button>
+          )}
+          <Button
+            size="small"
+            variant="outlined"
+            color="secondary"
+            disabled={!!busy}
+            onClick={() => revoke(a)}
+          >
+            {busy === a.name ? 'Revoking…' : 'Revoke'}
+          </Button>
+        </Box>
       ),
     },
   ];
