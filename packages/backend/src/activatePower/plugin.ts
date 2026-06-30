@@ -22,6 +22,7 @@ import {
   AlreadyActiveError,
   type ProxyDeps,
 } from './createActivation';
+import { createAuditReader } from './auditHistory';
 
 /**
  * Activate Power backend (ADR-088) — the SOLE creator of `Activation` CRs, the front door's security core.
@@ -87,6 +88,17 @@ export const activatePowerPlugin = createBackendPlugin({
 
         // Created once — caches the realm signing keys across requests.
         const jwks = createRemoteJWKSet(new URL(jwksUri));
+
+        // Read side of the durable audit (ADR-088 §3.6) — borrow HISTORY for the Access view. The DSN is a
+        // secret, so it comes from the env (AUDIT_DB_DSN); unset → the view degrades to standing + live only.
+        const auditReader = createAuditReader(process.env.AUDIT_DB_DSN);
+        if (process.env.AUDIT_DB_DSN) {
+          logger.info('access view: audit history reader connected');
+        } else {
+          logger.info(
+            'access view: AUDIT_DB_DSN unset — borrow history disabled',
+          );
+        }
 
         // Reach the cluster as THIS backend's service identity (the kubernetes proxy authenticates to EKS
         // via the pod's Pod Identity, independent of the calling user).
@@ -246,6 +258,39 @@ export const activatePowerPlugin = createBackendPlugin({
             isAdmin: await isAccessAdmin(proxy, caller),
             scope: admin ? 'all' : 'mine',
             activations: admin ? all : all.filter(a => a.principal === caller),
+          });
+        });
+
+        // A person's whole access picture, joined at read time (NOT stored on the Person): standing grants +
+        // borrowable (on-demand) grants from the registry, live borrows from Activations, and durable HISTORY
+        // from the audit DB. Yours by default; access-admin may pass ?user= to view anyone's.
+        router.get('/access', async (req, res) => {
+          const caller = await resolveCaller(req);
+          const proxy = await makeProxy();
+          const admin = await isAccessAdmin(proxy, caller);
+          const target =
+            typeof req.query?.user === 'string' && req.query.user
+              ? req.query.user
+              : caller;
+          if (target !== caller && !admin) {
+            res.status(403).json({
+              error: "only access-admin can view another person's access",
+            });
+            return;
+          }
+          const grants = await getPersonGrants(proxy, target);
+          const borrows = (await listActivations(proxy)).filter(
+            a => a.principal === target,
+          );
+          const history = await auditReader.historyFor(target);
+          res.json({
+            user: target,
+            isSelf: target === caller,
+            isAdmin: admin,
+            standingGrants: grants.filter(g => g.activation !== 'on-demand'),
+            borrowableGrants: grants.filter(g => g.activation === 'on-demand'),
+            liveBorrows: borrows,
+            history,
           });
         });
 

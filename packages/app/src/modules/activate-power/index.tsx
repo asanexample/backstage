@@ -36,7 +36,21 @@ const activationsPage = PageBlueprint.make({
   },
 });
 
+// The per-person Access view — standing grants + live borrows + audit history, joined at read time.
+const accessPage = PageBlueprint.make({
+  name: 'access',
+  params: {
+    path: '/access',
+    loader: () => import('./AccessPage').then(m => <m.AccessPage />),
+  },
+});
+
 export const activatePowerModule = createFrontendModule({
   pluginId: 'app',
-  extensions: [activatePowerPage, activatePowerCallbackPage, activationsPage],
+  extensions: [
+    activatePowerPage,
+    activatePowerCallbackPage,
+    activationsPage,
+    accessPage,
+  ],
 });
