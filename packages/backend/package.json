@@ -65,7 +65,8 @@
   },
   "devDependencies": {
     "@backstage/cli": "^0.36.2",
-    "@types/express": "^4.17.21"
+    "@types/express": "^4.17.21",
+    "@types/pg": "^8.11.0"
   },
   "files": [
     "dist"
