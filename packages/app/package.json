@@ -29,6 +29,26 @@
             "description": "The Kubernetes cluster (as named in kubernetes.clusterLocatorMethods) the Tenant Status card (#285) proxies XTenant GETs to. Defaults to preprod-use1-eks, the workload cluster hosting tenants."
           }
         }
+      },
+      "activatePower": {
+        "type": "object",
+        "properties": {
+          "authority": {
+            "type": "string",
+            "visibility": "frontend",
+            "description": "Activate Power (ADR-088): Keycloak realm issuer (OIDC authority) the step-up passkey popup re-authenticates against."
+          },
+          "clientId": {
+            "type": "string",
+            "visibility": "frontend",
+            "description": "Activate Power: the public step-up OIDC client id (no secret; runs in the browser)."
+          },
+          "acrValues": {
+            "type": "string",
+            "visibility": "frontend",
+            "description": "Activate Power: optional requested assurance level (acr_values), e.g. gold."
+          }
+        }
       }
     }
   },
