@@ -3,6 +3,9 @@ import {
   buildActivationManifest,
   getPersonGrants,
   submitActivation,
+  listActivations,
+  getActivation,
+  deleteActivation,
   AlreadyActiveError,
   type FetchLike,
   type ProxyDeps,
@@ -137,5 +140,80 @@ describe('submitActivation', () => {
   it('throws on other failures', async () => {
     const p = fakeProxy(() => ({ status: 403, body: 'forbidden' }));
     await expect(submitActivation(p, {})).rejects.toThrow(/403/);
+  });
+});
+
+const activationItem = (
+  name: string,
+  principal: string,
+  extra: Record<string, unknown> = {},
+) => ({
+  metadata: { name },
+  spec: {
+    principal,
+    role: 'break-glass',
+    reach: { scope: 'platform' },
+    reason: 'x',
+  },
+  status: { phase: 'Active', expiresAt: '2026-06-30T03:00:00Z' },
+  ...extra,
+});
+
+describe('listActivations', () => {
+  it('flattens items to summaries (spec + status)', async () => {
+    const p = fakeProxy(() => ({
+      status: 200,
+      body: JSON.stringify({
+        items: [activationItem('josh-break-glass-platform', 'josh')],
+      }),
+    }));
+    const out = await listActivations(p);
+    expect(out).toEqual([
+      {
+        name: 'josh-break-glass-platform',
+        principal: 'josh',
+        role: 'break-glass',
+        reach: { scope: 'platform' },
+        reason: 'x',
+        phase: 'Active',
+        grantedAt: undefined,
+        expiresAt: '2026-06-30T03:00:00Z',
+      },
+    ]);
+  });
+});
+
+describe('getActivation', () => {
+  it('returns null on 404', async () => {
+    const p = fakeProxy(() => ({ status: 404 }));
+    expect(await getActivation(p, 'nope')).toBeNull();
+  });
+  it('returns the summary on 200', async () => {
+    const p = fakeProxy(() => ({
+      status: 200,
+      body: JSON.stringify(activationItem('a', 'robin')),
+    }));
+    expect((await getActivation(p, 'a'))?.principal).toBe('robin');
+  });
+});
+
+describe('deleteActivation', () => {
+  it('DELETEs the named CR', async () => {
+    let seen: { method: string; url: string } | undefined;
+    const p = fakeProxy((method, url) => {
+      seen = { method, url };
+      return { status: 200 };
+    });
+    await deleteActivation(p, 'josh-break-glass-platform');
+    expect(seen?.method).toBe('DELETE');
+    expect(seen?.url).toContain('/activations/josh-break-glass-platform');
+  });
+  it('treats 404 as success (idempotent)', async () => {
+    const p = fakeProxy(() => ({ status: 404 }));
+    await expect(deleteActivation(p, 'gone')).resolves.toBeUndefined();
+  });
+  it('throws on other failures', async () => {
+    const p = fakeProxy(() => ({ status: 403, body: 'forbidden' }));
+    await expect(deleteActivation(p, 'x')).rejects.toThrow(/403/);
   });
 });

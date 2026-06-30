@@ -13,6 +13,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import GroupIcon from '@material-ui/icons/Group';
 import LinkIcon from '@material-ui/icons/Link';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
+import ListIcon from '@material-ui/icons/List';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
@@ -34,6 +35,7 @@ export const SidebarContent = NavContentBlueprint.make({
       // Activate Power page itself is placed explicitly in the Menu group below.
       nav.take('page:activate-power-callback');
       nav.take('page:activate-power');
+      nav.take('page:activations');
 
       return (
         <Sidebar>
@@ -53,11 +55,16 @@ export const SidebarContent = NavContentBlueprint.make({
             />
             {nav.take('page:scaffolder')}
             {/* Activate Power (ADR-088): borrow a privileged role for a bounded window, gated by a fresh
-                passkey step-up. */}
+                passkey step-up. Activations lists the live borrows (status, expiry, revoke). */}
             <SidebarItem
               icon={LockOpenIcon}
               to="/activate-power"
               text="Activate Power"
+            />
+            <SidebarItem
+              icon={ListIcon}
+              to="/activations"
+              text="Active Power"
             />
             <SidebarDivider />
             <SidebarScrollWrapper>

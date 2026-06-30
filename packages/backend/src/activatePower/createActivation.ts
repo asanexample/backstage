@@ -119,6 +119,92 @@ export async function submitActivation(
   return { name: created.metadata?.name ?? '' };
 }
 
+/** A live borrow, flattened for the Activations page. */
+export interface ActivationSummary {
+  name: string;
+  principal: string;
+  role: string;
+  reach: Reach;
+  reason?: string;
+  phase?: string;
+  grantedAt?: string;
+  expiresAt?: string;
+}
+
+type ActivationItem = {
+  metadata?: { name?: string };
+  spec?: {
+    principal?: string;
+    role?: string;
+    reach?: Reach;
+    reason?: string;
+  };
+  status?: { phase?: string; grantedAt?: string; expiresAt?: string };
+};
+
+const toSummary = (it: ActivationItem): ActivationSummary => ({
+  name: it.metadata?.name ?? '',
+  principal: it.spec?.principal ?? '',
+  role: it.spec?.role ?? '',
+  reach: it.spec?.reach ?? {},
+  reason: it.spec?.reason,
+  phase: it.status?.phase,
+  grantedAt: it.status?.grantedAt,
+  expiresAt: it.status?.expiresAt,
+});
+
+/** List all Activations (the caller scopes/filters them). */
+export async function listActivations(
+  deps: ProxyDeps,
+): Promise<ActivationSummary[]> {
+  const res = await proxyRequest(
+    deps,
+    'GET',
+    `/apis/${GROUP}/${VERSION}/${PLURAL}`,
+  );
+  if (!res.ok) {
+    throw new Error(`listing activations: ${res.status} ${await res.text()}`);
+  }
+  const body = JSON.parse(await res.text()) as { items?: ActivationItem[] };
+  return (body.items ?? []).map(toSummary);
+}
+
+/** Fetch one Activation (to check ownership before revoking). Null on 404. */
+export async function getActivation(
+  deps: ProxyDeps,
+  name: string,
+): Promise<ActivationSummary | null> {
+  const res = await proxyRequest(
+    deps,
+    'GET',
+    `/apis/${GROUP}/${VERSION}/${PLURAL}/${encodeURIComponent(name)}`,
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(
+      `reading activation ${name}: ${res.status} ${await res.text()}`,
+    );
+  }
+  return toSummary(JSON.parse(await res.text()) as ActivationItem);
+}
+
+/** Delete an Activation — the operator's finalizer revokes every grant. Idempotent (404 = already gone). */
+export async function deleteActivation(
+  deps: ProxyDeps,
+  name: string,
+): Promise<void> {
+  const res = await proxyRequest(
+    deps,
+    'DELETE',
+    `/apis/${GROUP}/${VERSION}/${PLURAL}/${encodeURIComponent(name)}`,
+  );
+  if (!res.ok && res.status !== 404) {
+    throw new Error(
+      `revoking activation ${name}: ${res.status} ${await res.text()}`,
+    );
+  }
+}
+
 async function proxyRequest(
   deps: ProxyDeps,
   method: string,

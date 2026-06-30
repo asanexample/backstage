@@ -88,7 +88,9 @@ export async function verifyStepUp(
   const ageSeconds = nowMs() / 1000 - authTime;
   if (ageSeconds > req.maxAuthAgeSeconds) {
     throw new StepUpError(
-      `step-up authentication is stale (${Math.round(ageSeconds)}s old, max ${req.maxAuthAgeSeconds}s) — re-authenticate with your passkey`,
+      `step-up authentication is stale (${Math.round(ageSeconds)}s old, max ${
+        req.maxAuthAgeSeconds
+      }s) — re-authenticate with your passkey`,
     );
   }
   if (ageSeconds < -req.maxAuthAgeSeconds) {
@@ -101,7 +103,9 @@ export async function verifyStepUp(
   const acr = typeof payload.acr === 'string' ? payload.acr : undefined;
   if (req.requiredAcr && acr !== req.requiredAcr) {
     throw new StepUpError(
-      `step-up did not satisfy the required assurance level (needed acr "${req.requiredAcr}", got "${acr ?? 'none'}") — you must use your passkey`,
+      `step-up did not satisfy the required assurance level (needed acr "${
+        req.requiredAcr
+      }", got "${acr ?? 'none'}") — you must use your passkey`,
     );
   }
 

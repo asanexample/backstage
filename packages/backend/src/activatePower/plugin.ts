@@ -14,6 +14,9 @@ import {
   buildActivationManifest,
   getPersonGrants,
   submitActivation,
+  listActivations,
+  getActivation,
+  deleteActivation,
   AlreadyActiveError,
   type ProxyDeps,
 } from './createActivation';
@@ -57,14 +60,24 @@ export const activatePowerPlugin = createBackendPlugin({
         config: coreServices.rootConfig,
         logger: coreServices.logger,
       },
-      async init({ http, httpAuth, userInfo, auth, discovery, config, logger }) {
+      async init({
+        http,
+        httpAuth,
+        userInfo,
+        auth,
+        discovery,
+        config,
+        logger,
+      }) {
         const clusterName = config.getString('activatePower.clusterName');
         const issuer = config.getString('activatePower.issuer');
         const audience = config.getString('activatePower.audience');
         const jwksUri =
           config.getOptionalString('activatePower.jwksUri') ??
           `${issuer}/protocol/openid-connect/certs`;
-        const requiredAcr = config.getOptionalString('activatePower.requiredAcr');
+        const requiredAcr = config.getOptionalString(
+          'activatePower.requiredAcr',
+        );
         const maxAuthAgeSeconds =
           config.getOptionalNumber('activatePower.maxAuthAgeSeconds') ?? 120;
         const defaultDuration =
@@ -95,7 +108,9 @@ export const activatePowerPlugin = createBackendPlugin({
         // What CAN the signed-in user borrow? (its on-demand grants) — populates the Activate Power page.
         // Listing is not sensitive, so no step-up here; borrowing (POST /activate) is the gated action.
         router.get('/eligible', async (req, res) => {
-          const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+          const credentials = await httpAuth.credentials(req, {
+            allow: ['user'],
+          });
           const info = await userInfo.getUserInfo(credentials);
           const caller = usernameFromEntityRef(info.userEntityRef);
           const grants = await getPersonGrants(await makeProxy(), caller);
@@ -104,7 +119,9 @@ export const activatePowerPlugin = createBackendPlugin({
 
         router.post('/activate', async (req, res) => {
           // 1. The calling Backstage user.
-          const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+          const credentials = await httpAuth.credentials(req, {
+            allow: ['user'],
+          });
           const info = await userInfo.getUserInfo(credentials);
           const caller = usernameFromEntityRef(info.userEntityRef);
 
@@ -118,7 +135,9 @@ export const activatePowerPlugin = createBackendPlugin({
               ? req.body.duration
               : defaultDuration;
           const stepUpToken =
-            typeof req.body?.stepUpToken === 'string' ? req.body.stepUpToken : '';
+            typeof req.body?.stepUpToken === 'string'
+              ? req.body.stepUpToken
+              : '';
           if (!role || !reach || !reason || !stepUpToken) {
             res.status(400).json({
               error:
@@ -192,6 +211,65 @@ export const activatePowerPlugin = createBackendPlugin({
             }
             throw e;
           }
+        });
+
+        // Resolve the signed-in user once (used by the read/revoke routes below).
+        const resolveCaller = async (
+          req: Parameters<typeof httpAuth.credentials>[0],
+        ) => {
+          const credentials = await httpAuth.credentials(req, {
+            allow: ['user'],
+          });
+          const info = await userInfo.getUserInfo(credentials);
+          return usernameFromEntityRef(info.userEntityRef);
+        };
+        // access-admin (runs the access system) may see + revoke everyone's borrows; otherwise only your own.
+        const isAccessAdmin = async (
+          proxy: ProxyDeps,
+          caller: string,
+        ): Promise<boolean> =>
+          (await getPersonGrants(proxy, caller)).some(
+            g => g.role === 'access-admin',
+          );
+
+        // List live borrows. Your own by default; access-admin can pass ?all=true for the governance view.
+        router.get('/activations', async (req, res) => {
+          const caller = await resolveCaller(req);
+          const proxy = await makeProxy();
+          const wantAll = req.query?.all === 'true';
+          const admin = wantAll && (await isAccessAdmin(proxy, caller));
+          const all = await listActivations(proxy);
+          res.json({
+            user: caller,
+            isAdmin: await isAccessAdmin(proxy, caller),
+            scope: admin ? 'all' : 'mine',
+            activations: admin ? all : all.filter(a => a.principal === caller),
+          });
+        });
+
+        // Revoke a borrow (delete the CR → the operator pulls every grant back). You may revoke your own;
+        // access-admin may revoke anyone's (emergency kill).
+        router.delete('/activations/:name', async (req, res) => {
+          const caller = await resolveCaller(req);
+          const proxy = await makeProxy();
+          const name = req.params.name;
+          const activation = await getActivation(proxy, name);
+          if (!activation) {
+            res.status(404).json({ error: 'no such activation' });
+            return;
+          }
+          if (
+            activation.principal !== caller &&
+            !(await isAccessAdmin(proxy, caller))
+          ) {
+            res
+              .status(403)
+              .json({ error: 'you can only revoke your own borrows' });
+            return;
+          }
+          await deleteActivation(proxy, name);
+          logger.info(`revoke: ${caller} revoked activation ${name}`);
+          res.status(202).json({ name, revoked: true });
         });
 
         http.use(router);

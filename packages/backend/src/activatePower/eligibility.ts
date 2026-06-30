@@ -27,9 +27,7 @@ export function isEligibleToBorrow(
 ): boolean {
   return grants.some(
     g =>
-      g.role === role &&
-      g.activation === 'on-demand' &&
-      reachMatches(g, reach),
+      g.role === role && g.activation === 'on-demand' && reachMatches(g, reach),
   );
 }
 

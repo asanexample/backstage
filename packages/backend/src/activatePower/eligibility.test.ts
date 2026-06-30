@@ -39,9 +39,9 @@ describe('isEligibleToBorrow', () => {
     expect(isEligibleToBorrow(grants, 'developer', { team: 'bravo' })).toBe(
       false,
     );
-    expect(
-      isEligibleToBorrow(grants, 'break-glass', { team: 'alpha' }),
-    ).toBe(false);
+    expect(isEligibleToBorrow(grants, 'break-glass', { team: 'alpha' })).toBe(
+      false,
+    );
   });
 });
 

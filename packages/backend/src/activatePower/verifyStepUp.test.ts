@@ -51,7 +51,12 @@ describe('verifyStepUp', () => {
   });
 
   it('accepts a fresh passkey assertion and returns the bound identity', async () => {
-    const res = await verifyStepUp(await token(privateKey), publicKey, REQ, now);
+    const res = await verifyStepUp(
+      await token(privateKey),
+      publicKey,
+      REQ,
+      now,
+    );
     expect(res).toMatchObject({
       subject: 'josh-subject',
       username: 'josh',
@@ -62,9 +67,7 @@ describe('verifyStepUp', () => {
 
   it('rejects a stale authentication (auth_time older than the window)', async () => {
     const t = await token(privateKey, { auth_time: nowSec - 600 });
-    await expect(verifyStepUp(t, publicKey, REQ, now)).rejects.toThrow(
-      /stale/,
-    );
+    await expect(verifyStepUp(t, publicKey, REQ, now)).rejects.toThrow(/stale/);
   });
 
   it('rejects the wrong authenticator (acr not the required passkey LoA)', async () => {
