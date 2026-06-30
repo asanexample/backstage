@@ -27,7 +27,16 @@ const activatePowerCallbackPage = PageBlueprint.make({
   },
 });
 
+// The live borrows view — status, expiry, revoke (and an all-borrows view for access-admin).
+const activationsPage = PageBlueprint.make({
+  name: 'activations',
+  params: {
+    path: '/activations',
+    loader: () => import('./ActivationsPage').then(m => <m.ActivationsPage />),
+  },
+});
+
 export const activatePowerModule = createFrontendModule({
   pluginId: 'app',
-  extensions: [activatePowerPage, activatePowerCallbackPage],
+  extensions: [activatePowerPage, activatePowerCallbackPage, activationsPage],
 });
