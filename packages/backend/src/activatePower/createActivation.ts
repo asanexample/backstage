@@ -205,18 +205,50 @@ export async function deleteActivation(
   }
 }
 
+/**
+ * Request an extension: stamp the renew annotation (a fresh nonce + the verified step-up) via a merge-patch.
+ * The operator applies it once per nonce — re-proving eligibility and pushing the expiry out, capped at the
+ * role's ceiling. Metadata only: spec stays immutable. 404 → the borrow is already gone.
+ */
+export async function requestExtend(
+  deps: ProxyDeps,
+  name: string,
+  renew: { nonce: string; authTime: string; acr?: string },
+): Promise<boolean> {
+  const patch = JSON.stringify({
+    metadata: {
+      annotations: { [`${GROUP}/renew`]: JSON.stringify(renew) },
+    },
+  });
+  const res = await proxyRequest(
+    deps,
+    'PATCH',
+    `/apis/${GROUP}/${VERSION}/${PLURAL}/${encodeURIComponent(name)}`,
+    patch,
+    'application/merge-patch+json',
+  );
+  if (res.status === 404) return false;
+  if (!res.ok) {
+    throw new Error(
+      `extending activation ${name}: ${res.status} ${await res.text()}`,
+    );
+  }
+  return true;
+}
+
 async function proxyRequest(
   deps: ProxyDeps,
   method: string,
   path: string,
   body?: string,
+  contentType = 'application/json',
 ) {
   return deps.fetch(`${deps.baseUrl}/proxy${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${deps.token}`,
       'Backstage-Kubernetes-Cluster': deps.clusterName,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(body ? { 'Content-Type': contentType } : {}),
     },
     body,
   });

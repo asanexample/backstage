@@ -6,6 +6,7 @@ import {
   listActivations,
   getActivation,
   deleteActivation,
+  requestExtend,
   AlreadyActiveError,
   type FetchLike,
   type ProxyDeps,
@@ -215,5 +216,35 @@ describe('deleteActivation', () => {
   it('throws on other failures', async () => {
     const p = fakeProxy(() => ({ status: 403, body: 'forbidden' }));
     await expect(deleteActivation(p, 'x')).rejects.toThrow(/403/);
+  });
+});
+
+describe('requestExtend', () => {
+  it('PATCHes the renew annotation with a merge-patch', async () => {
+    let seen: { method: string; url: string } | undefined;
+    const p = fakeProxy((method, url) => {
+      seen = { method, url };
+      return { status: 200 };
+    });
+    const ok = await requestExtend(p, 'josh-break-glass-platform', {
+      nonce: 'n1',
+      authTime: '2026-06-30T02:50:00.000Z',
+      acr: 'silver',
+    });
+    expect(ok).toBe(true);
+    expect(seen?.method).toBe('PATCH');
+    expect(seen?.url).toContain('/activations/josh-break-glass-platform');
+  });
+  it('returns false on 404 (borrow already gone)', async () => {
+    const p = fakeProxy(() => ({ status: 404 }));
+    expect(await requestExtend(p, 'gone', { nonce: 'n', authTime: 't' })).toBe(
+      false,
+    );
+  });
+  it('throws on other failures', async () => {
+    const p = fakeProxy(() => ({ status: 403, body: 'forbidden' }));
+    await expect(
+      requestExtend(p, 'x', { nonce: 'n', authTime: 't' }),
+    ).rejects.toThrow(/403/);
   });
 });
