@@ -10,9 +10,9 @@ import {
 
 describe('activationName', () => {
   it('is deterministic and k8s-valid (principal-role-reach, lowercased)', () => {
-    expect(
-      activationName('josh', 'break-glass', { scope: 'platform' }),
-    ).toBe('josh-break-glass-platform');
+    expect(activationName('josh', 'break-glass', { scope: 'platform' })).toBe(
+      'josh-break-glass-platform',
+    );
     expect(activationName('Alpha-Dev', 'developer', { team: 'alpha' })).toBe(
       'alpha-dev-developer-alpha',
     );
@@ -45,31 +45,64 @@ describe('buildActivationManifest', () => {
 });
 
 function fakeProxy(
-  responder: (method: string, url: string, body?: string) => { status: number; body?: string },
+  responder: (
+    method: string,
+    url: string,
+    body?: string,
+  ) => { status: number; body?: string },
 ): ProxyDeps {
   const fetch: FetchLike = async (url, init) => {
-    const { status, body = '' } = responder(init?.method ?? 'GET', url, init?.body);
-    return { status, ok: status >= 200 && status < 300, text: async () => body };
+    const { status, body = '' } = responder(
+      init?.method ?? 'GET',
+      url,
+      init?.body,
+    );
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      text: async () => body,
+    };
   };
   return { baseUrl: 'http://k8s', token: 't', clusterName: 'c', fetch };
 }
 
+const peopleList = (...people: Array<{ person: string; grants: unknown[] }>) =>
+  JSON.stringify({ items: people.map(p => ({ spec: p })) });
+
 describe('getPersonGrants', () => {
-  it('returns [] for a missing Person (404)', async () => {
-    const p = fakeProxy(() => ({ status: 404 }));
+  it('matches on spec.person (the login anchor), not the record name', async () => {
+    // login `dev-alpha` resolves the record whose spec.person is `dev-alpha`, even though its name differs.
+    const p = fakeProxy(() => ({
+      status: 200,
+      body: peopleList(
+        { person: 'robin', grants: [{ role: 'developer', team: 'platform' }] },
+        {
+          person: 'dev-alpha',
+          grants: [
+            { role: 'break-glass', scope: 'platform', activation: 'on-demand' },
+          ],
+        },
+      ),
+    }));
+    expect(await getPersonGrants(p, 'dev-alpha')).toEqual([
+      { role: 'break-glass', scope: 'platform', activation: 'on-demand' },
+    ]);
+  });
+
+  it('returns [] when no person anchors to that login', async () => {
+    const p = fakeProxy(() => ({
+      status: 200,
+      body: peopleList({
+        person: 'robin',
+        grants: [{ role: 'developer', team: 'platform' }],
+      }),
+    }));
     expect(await getPersonGrants(p, 'nobody')).toEqual([]);
   });
 
-  it('returns the Person spec.grants', async () => {
-    const p = fakeProxy(() => ({
-      status: 200,
-      body: JSON.stringify({
-        spec: { grants: [{ role: 'break-glass', scope: 'platform', activation: 'on-demand' }] },
-      }),
-    }));
-    expect(await getPersonGrants(p, 'josh')).toEqual([
-      { role: 'break-glass', scope: 'platform', activation: 'on-demand' },
-    ]);
+  it('throws when the list call fails', async () => {
+    const p = fakeProxy(() => ({ status: 403, body: 'forbidden' }));
+    await expect(getPersonGrants(p, 'josh')).rejects.toThrow(/403/);
   });
 });
 
@@ -78,16 +111,26 @@ describe('submitActivation', () => {
     let seen: { method: string; url: string; body?: string } | undefined;
     const p = fakeProxy((method, url, body) => {
       seen = { method, url, body };
-      return { status: 201, body: JSON.stringify({ metadata: { name: 'josh-break-glass-platform' } }) };
+      return {
+        status: 201,
+        body: JSON.stringify({
+          metadata: { name: 'josh-break-glass-platform' },
+        }),
+      };
     });
     const out = await submitActivation(p, { metadata: { name: 'x' } });
     expect(out.name).toBe('josh-break-glass-platform');
     expect(seen?.method).toBe('POST');
-    expect(seen?.url).toContain('/proxy/apis/platform.refplat.org/v1alpha1/activations');
+    expect(seen?.url).toContain(
+      '/proxy/apis/platform.refplat.org/v1alpha1/activations',
+    );
   });
 
   it('maps a 409 to AlreadyActiveError', async () => {
-    const p = fakeProxy(() => ({ status: 409, body: '{"reason":"AlreadyExists"}' }));
+    const p = fakeProxy(() => ({
+      status: 409,
+      body: '{"reason":"AlreadyExists"}',
+    }));
     await expect(submitActivation(p, {})).rejects.toThrow(AlreadyActiveError);
   });
 
