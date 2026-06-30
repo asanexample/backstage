@@ -26,9 +26,9 @@ export interface Config {
     clusterName?: string;
   };
   /**
-   * Activate Power frontend (ADR-088) — the step-up popup ceremony. Read in the browser, so these are
-   * non-secret OIDC public-client parameters. (The backend's own activatePower.* config — clusterName,
-   * issuer, audience — lives in the backend package's schema.)
+   * Activate Power (ADR-088) — the temporary-power front door. The whole activatePower schema lives here
+   * (not in the backend package): the frontend keys (the step-up popup, `@visibility frontend`) and the
+   * backend keys (the /activate + /eligible routes, default backend visibility) together.
    */
   activatePower?: {
     /**
@@ -47,5 +47,19 @@ export interface Config {
      * @visibility frontend
      */
     acrValues?: string;
+    /** The cluster (kubernetes-plugin name) the backend creates Activation CRs in (the hub). */
+    clusterName?: string;
+    /** The Keycloak realm issuer the backend requires the step-up id_token to come from. */
+    issuer?: string;
+    /** The OIDC client id (token audience) the step-up ceremony used. */
+    audience?: string;
+    /** Realm JWKS URI. Default: `<issuer>/protocol/openid-connect/certs`. */
+    jwksUri?: string;
+    /** Required `acr` — omit to accept any fresh authentication (freshness is still enforced). */
+    requiredAcr?: string;
+    /** How fresh the step-up must be (auth_time within this many seconds). Default: 120. */
+    maxAuthAgeSeconds?: number;
+    /** Default borrow window (Go duration) when the request omits one. Default: "1h". */
+    defaultDuration?: string;
   };
 }
