@@ -23,13 +23,19 @@ export interface ActivationRequest {
 }
 
 /** A deterministic, k8s-valid name so a duplicate active borrow is an atomic AlreadyExists, not a race. */
-export function activationName(principal: string, role: string, reach: Reach): string {
+export function activationName(
+  principal: string,
+  role: string,
+  reach: Reach,
+): string {
   const reachKey = reach.scope ?? reach.team ?? 'unknown';
   return `${principal}-${role}-${reachKey}`.toLowerCase();
 }
 
 /** The Activation CR manifest. Pure — unit-tested separately from the HTTP submission. */
-export function buildActivationManifest(req: ActivationRequest): Record<string, unknown> {
+export function buildActivationManifest(
+  req: ActivationRequest,
+): Record<string, unknown> {
   return {
     apiVersion: `${GROUP}/${VERSION}`,
     kind: 'Activation',
@@ -69,21 +75,27 @@ export interface ProxyDeps {
 
 export class AlreadyActiveError extends Error {}
 
-/** GET a Person CR's grants (front-door eligibility). Returns [] when the Person doesn't exist. */
+/**
+ * Resolve a person's grants by their Keycloak identity (front-door eligibility). The caller is the login
+ * username (the OIDC `preferred_username` / email local-part), which the People registry records as
+ * `spec.person` — NOT the Person record's name (the registry slug differs from the login, e.g. record
+ * `alpha-dev` ↔ login `dev-alpha`). So we LIST people and match on `spec.person`, not GET-by-name. Returns []
+ * when no person anchors to that login.
+ */
 export async function getPersonGrants(
   deps: ProxyDeps,
   username: string,
 ): Promise<PersonGrant[]> {
-  const path = `/apis/${GROUP}/v1beta1/people/${encodeURIComponent(username)}`;
+  const path = `/apis/${GROUP}/v1beta1/people`;
   const res = await proxyRequest(deps, 'GET', path);
-  if (res.status === 404) return [];
   if (!res.ok) {
-    throw new Error(`reading Person ${username}: ${res.status} ${await res.text()}`);
+    throw new Error(`listing people: ${res.status} ${await res.text()}`);
   }
   const body = JSON.parse(await res.text()) as {
-    spec?: { grants?: PersonGrant[] };
+    items?: Array<{ spec?: { person?: string; grants?: PersonGrant[] } }>;
   };
-  return body.spec?.grants ?? [];
+  const person = (body.items ?? []).find(p => p.spec?.person === username);
+  return person?.spec?.grants ?? [];
 }
 
 /** POST the Activation CR. Throws {@link AlreadyActiveError} on a 409 (an active borrow already exists). */
@@ -101,7 +113,9 @@ export async function submitActivation(
   if (!res.ok) {
     throw new Error(`creating Activation: ${res.status} ${await res.text()}`);
   }
-  const created = JSON.parse(await res.text()) as { metadata?: { name?: string } };
+  const created = JSON.parse(await res.text()) as {
+    metadata?: { name?: string };
+  };
   return { name: created.metadata?.name ?? '' };
 }
 
