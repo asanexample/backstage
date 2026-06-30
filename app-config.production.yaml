@@ -78,6 +78,11 @@ activatePower:
   authority: https://keycloak.aws.refplat.org/realms/platform
   clientId: activate-power
 
+# Cost tab (ADR-091 A3) — the cost backend queries the hub Mimir (federated tenant) for per-team spend vs budget.
+cost:
+  mimirUrl: http://mimir-gateway.observability.svc/prometheus
+  mimirTenant: platform|preprod
+
 integrations:
   github:
     # Two GitHub Apps; Backstage picks per request. ORDER IS LOAD-BEARING: org-level (repo-less) credential
