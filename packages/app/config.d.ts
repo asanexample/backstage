@@ -62,4 +62,15 @@ export interface Config {
     /** Default borrow window (Go duration) when the request omits one. Default: "1h". */
     defaultDuration?: string;
   };
+
+  /**
+   * Cost (ADR-091 A3) — the backend Cost tab queries the hub Mimir for per-team spend vs budget. Backend keys
+   * only (the frontend reads via the cost backend, not config).
+   */
+  cost?: {
+    /** In-cluster Mimir gateway query API base, e.g. http://mimir-gateway.observability.svc/prometheus. */
+    mimirUrl?: string;
+    /** X-Scope-OrgID tenant for the query — the federated "platform|preprod" so spend spans both clusters. */
+    mimirTenant?: string;
+  };
 }

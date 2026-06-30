@@ -15,6 +15,7 @@ import LinkIcon from '@material-ui/icons/Link';
 import LockOpenIcon from '@material-ui/icons/LockOpen';
 import ListIcon from '@material-ui/icons/List';
 import AccountBoxIcon from '@material-ui/icons/AccountBox';
+import MonetizationOnIcon from '@material-ui/icons/MonetizationOn';
 import { SidebarSearchModal } from '@backstage/plugin-search';
 import { UserSettingsSignInAvatar } from '@backstage/plugin-user-settings';
 import { NotificationsSidebarItem } from '@backstage/plugin-notifications';
@@ -38,6 +39,7 @@ export const SidebarContent = NavContentBlueprint.make({
       nav.take('page:activate-power');
       nav.take('page:activations');
       nav.take('page:access');
+      nav.take('page:cost');
 
       return (
         <Sidebar>
@@ -69,6 +71,7 @@ export const SidebarContent = NavContentBlueprint.make({
               text="Active Power"
             />
             <SidebarItem icon={AccountBoxIcon} to="/access" text="My Access" />
+            <SidebarItem icon={MonetizationOnIcon} to="/cost" text="Cost" />
             <SidebarDivider />
             <SidebarScrollWrapper>
               {nav.rest({ sortBy: 'title' })}

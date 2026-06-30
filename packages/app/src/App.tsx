@@ -28,6 +28,8 @@ import { productPickerModule } from './modules/product-picker';
 // gated by a fresh passkey step-up. The backend (the sole Activation creator) verifies the step-up and the
 // operator mints/expires the borrow.
 import { activatePowerModule } from './modules/activate-power';
+// Cost (ADR-091 A3): per-team spend vs budget in the portal, from the cost backend (queries the hub Mimir).
+import { costModule } from './modules/cost';
 
 export default createApp({
   features: [
@@ -41,5 +43,6 @@ export default createApp({
     teamTenantsModule,
     productPickerModule,
     activatePowerModule,
+    costModule,
   ],
 });
