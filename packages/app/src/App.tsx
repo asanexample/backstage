@@ -30,6 +30,12 @@ import { productPickerModule } from './modules/product-picker';
 import { activatePowerModule } from './modules/activate-power';
 // Cost (ADR-091 A3): per-team spend vs budget in the portal, from the cost backend (queries the hub Mimir).
 import { costModule } from './modules/cost';
+// TechDocs (#938, ADR-097): the entity "Docs" tab + the /docs reader, serving the platform Learning Portal
+// (docs/learn) from S3 (builder: external — the platform repo's techdocs CI publishes the pre-built site;
+// the backstage module sets techdocs.publisher=awsS3). The addons module registers the contrib addons —
+// notably Mermaid, which renders the portal's ```mermaid diagrams.
+import techdocsPlugin from '@backstage/plugin-techdocs/alpha';
+import techdocsAddonsModule from '@backstage/plugin-techdocs-module-addons-contrib/alpha';
 
 export default createApp({
   features: [
@@ -44,5 +50,7 @@ export default createApp({
     productPickerModule,
     activatePowerModule,
     costModule,
+    techdocsPlugin,
+    techdocsAddonsModule,
   ],
 });

@@ -153,6 +153,11 @@ catalog:
     # platform repo's docs/runbooks/backstage-scaffolder-github-app.md).
     - type: url
       target: https://github.com/asanexample/platform/blob/main/scaffolder/templates/location.yaml
+    # The platform's own Learning Portal docs entity (#938, ADR-097): a Component carrying a techdocs-ref,
+    # so Backstage serves docs/learn via TechDocs (builder: external, from the platform-techdocs S3 bucket).
+    # The global [Component, Location] rule above already permits it.
+    - type: url
+      target: https://github.com/asanexample/platform/blob/main/catalog-info.yaml
   providers:
     github:
       asanexample:
