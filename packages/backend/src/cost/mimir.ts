@@ -12,9 +12,13 @@ export interface MimirDeps {
   tenant: string; // X-Scope-OrgID; the federated "platform|preprod"
 }
 
-// The same expressions the cost dashboard panels use.
+// The same expressions the cost dashboard panels use. The node-cost side is wrapped in `max by (node)` so the
+// federated tenant query (platform|preprod) doesn't fail with a 1-to-many `group_left()` match: since the P13
+// per-team tenant routing went live, node_*_hourly_cost is written under more than one __tenant_id__ for a
+// shared node, so a bare `on(node) group_left() node_*_hourly_cost` 422s ("found duplicate series ... on the
+// right side"). `max by (node)` collapses the per-tenant copies to one value per node (they're identical).
 export const SPEND_BY_TEAM =
-  'sum by (team) ( label_replace( sum by (namespace) ( (container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost) + ((container_memory_allocation_bytes / 1024^3) * on(node) group_left() node_ram_hourly_cost) ) * 730, "team", "$1", "namespace", "^([a-z0-9]+)-.*" ) )';
+  'sum by (team) ( label_replace( sum by (namespace) ( (container_cpu_allocation * on(node) group_left() max by (node) (node_cpu_hourly_cost)) + ((container_memory_allocation_bytes / 1024^3) * on(node) group_left() max by (node) (node_ram_hourly_cost)) ) * 730, "team", "$1", "namespace", "^([a-z0-9]+)-.*" ) )';
 
 export const BUDGET_BY_TEAM = 'max by (team) (team_budget_monthly_usd)';
 
