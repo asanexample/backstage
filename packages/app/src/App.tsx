@@ -32,10 +32,8 @@ import { activatePowerModule } from './modules/activate-power';
 import { costModule } from './modules/cost';
 // TechDocs (#938, ADR-097): the entity "Docs" tab + the /docs reader, serving the platform Learning Portal
 // (docs/learn) from S3 (builder: external — the platform repo's techdocs CI publishes the pre-built site;
-// the backstage module sets techdocs.publisher=awsS3). The addons module registers the contrib addons —
-// notably Mermaid, which renders the portal's ```mermaid diagrams.
+// the backstage module sets techdocs.publisher=awsS3). (Mermaid rendering of the portal's diagrams is a follow-up — the new-frontend addon wiring differs.)
 import techdocsPlugin from '@backstage/plugin-techdocs/alpha';
-import techdocsAddonsModule from '@backstage/plugin-techdocs-module-addons-contrib/alpha';
 
 export default createApp({
   features: [
@@ -51,6 +49,5 @@ export default createApp({
     activatePowerModule,
     costModule,
     techdocsPlugin,
-    techdocsAddonsModule,
   ],
 });
